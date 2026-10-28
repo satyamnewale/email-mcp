@@ -1,0 +1,17 @@
+# OAuth credentials
+credentials.json
+token.json
+
+# Environment and secrets
+.env
+.venv/
+
+# Downloaded email attachments
+downloads/
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Test artifacts
+.pytest_cache/
