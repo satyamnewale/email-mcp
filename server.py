@@ -176,15 +176,15 @@ def search_emails(
                 "Provide time_date, start_time, and end_time together."
             )
 
-        if not any([
-            sender, recipient, subject, keyword,
-            start_date, end_date, time_date,
-            has_attachment is not None,
-            is_unread is not None,
-        ]):
-            raise ValueError(
-                "Provide at least one search condition."
-            )
+        # if not any([
+        #     sender, recipient, subject, keyword,
+        #     start_date, end_date, time_date,
+        #     has_attachment is not None,
+        #     is_unread is not None,
+        # ]):
+        #     raise ValueError(
+        #         "Provide at least one search condition."
+        #     )
 
         date_filters = None
         if start_date or end_date:
@@ -233,12 +233,28 @@ def search_emails(
             raw_message = gmail_api.get_message(
                 service,
                 message_id,
-                format="full",
+                format="metadata",
             )
 
-            parsed_messages.append(
-                email_parser.parse_message(raw_message)
+            headers = email_parser.get_headers(
+                raw_message.get("payload", {})
             )
+
+            parsed_messages.append({
+                "message_id": raw_message.get("id"),
+                "thread_id": raw_message.get("threadId"),
+                "from": headers.get("from"),
+                "to": headers.get("to"),
+                "subject": headers.get("subject"),
+                "date": headers.get("date"),
+                "snippet": raw_message.get("snippet", ""),
+                "has_attachments": bool(
+                    email_parser.attachments(
+                        raw_message.get("payload", {})
+                    )
+                ),
+                "labels": raw_message.get("labelIds", []),
+            })
 
         return {
             "ok": True,
@@ -248,6 +264,7 @@ def search_emails(
                 "result_size_estimate", 0
             ),
             "returned_count": len(parsed_messages),
+            "next_page_token": result.get("next_page_token"),
             "emails": parsed_messages,
         }
 
@@ -370,14 +387,41 @@ def get_attachment(
         if Path(filename).name != filename or "/" in filename or "\\" in filename:
             raise ValueError("filename must be a filename, not a path.")
 
-        attachment_metadata = {
-            "filename": filename,
-            "mime_type": mime_type,
-            "attachment_id": attachment_id,
-            "size_bytes": size_bytes,
-        }
-
         service = get_service()
+
+        # Load the specified email and verify its attachments.
+        raw_message = gmail_api.get_message(
+            service,
+            message_id,
+            format="full",
+        )
+
+        available_attachments = email_parser.attachments(
+            raw_message.get("payload", {})
+        )
+
+        matched_attachment = next(
+            (
+                item
+                for item in available_attachments
+                if item.get("attachment_id") == attachment_id
+            ),
+            None,
+        )
+
+        if matched_attachment is None:
+            raise ValueError(
+                "The specified attachment does not belong to this email."
+            )
+
+        # Use metadata obtained from Gmail, not caller-supplied metadata.
+        attachment_metadata = {
+            "filename": matched_attachment.get("filename") or filename,
+            "mime_type": matched_attachment.get("mime_type")
+                or "application/octet-stream",
+            "attachment_id": attachment_id,
+            "size_bytes": matched_attachment.get("size_bytes"),
+        }
 
         saved_file = attachment_service.download_attachment(
             service=service,

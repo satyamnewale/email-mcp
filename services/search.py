@@ -182,7 +182,7 @@ def search_emails(
     date_filters=None,
     attachment_filters=None,
     time_filters=None,
-    max_results=10,
+    max_results=500,
     page_token=None,
 ):
     """
@@ -204,6 +204,8 @@ def search_emails(
 
     try:
         query_parts = []
+
+        max_results = min(max(1, max_results), 500)
 
         # Sender, recipient, subject and keyword.
         text_query = build_search_query(
@@ -248,8 +250,12 @@ def search_emails(
         params = {
             "userId": "me",
             "maxResults": max_results,
-            "q": " ".join(query_parts),
         }
+
+        query = " ".join(query_parts).strip()
+
+        if query:
+            params["q"] = query
 
         if page_token:
             params["pageToken"] = page_token
@@ -267,7 +273,7 @@ def search_emails(
             "result_size_estimate": response.get(
                 "resultSizeEstimate", 0
             ),
-            "query": params["q"],
+            "query": params.get("q", ""),
             "timezone": str(get_user_timezone()),
         }
 
