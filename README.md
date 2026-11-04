@@ -25,32 +25,40 @@ Built with Python, the Gmail API, and FastMCP, this project connects an AI assis
 | Gmail API | Email search, retrieval, and attachment access |
 | Google OAuth 2.0 | User authentication and authorization |
 | `uv` | Python project and dependency management |
+| Codex CLI | AI assistant and local MCP client |
 
 ## 🧠 Architecture
 
 ```text
-AI Assistant / MCP Client
-          |
-          | MCP tool calls
-          v
-   FastMCP Server
-          |
-          v
-    Tool Functions
-          |
-     +----+------------------+
-     |           |           |
-     v           v           v
-   Search     Email Read   Attachment
-   Service    & Parser     Service
-     |           |           |
-     +-----------+-----------+
-                 |
-                 v
-             Gmail API
-                 |
-                 v
-            Gmail Account
+         AI Assistant / MCP Client
+                    |
+                    | MCP tool calls
+                    v
+              FastMCP Server
+                 server.py
+                    |
+                    v
+               Tool Functions
+                    |
+       +------------+-------------+
+       |            |             |
+       v            v             v
+    Search       Email Read    Attachment
+    Service      & Parser      Service
+       |            |             |
+       +------------+-------------+
+                    |
+                    v
+                 Gmail API
+                    |
+                    v
+                Gmail Account
+
+           Supporting Components:
+           - Google OAuth
+           - Input Validation
+           - Email Parsing
+           - Attachment Handling
 ```
 
 The MCP server exposes a small set of focused tools. The assistant selects the appropriate tool based on the user's request, while the server handles Gmail API operations, parsing, validation, and attachment saving.
@@ -101,6 +109,7 @@ The attachment service includes filename sanitization, a default maximum size of
 ```text
 gmail-mcp/
 ├── server.py
+│
 ├── services/
 │   ├── __init__.py
 │   ├── auth.py
@@ -108,7 +117,9 @@ gmail-mcp/
 │   ├── search.py
 │   ├── email_parser.py
 │   └── attachment_service.py
+│
 ├── downloads/
+│
 ├── credentials.json
 ├── token.json
 ├── pyproject.toml
@@ -125,11 +136,12 @@ gmail-mcp/
 
 - Python 3.10 or later
 - [`uv`](https://docs.astral.sh/uv/)
+- Git
 - A Google account with Gmail
 - A Google Cloud project with the Gmail API enabled
 - An OAuth client configured for the application
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/gmail-mcp.git
@@ -138,7 +150,19 @@ cd gmail-mcp
 
 Replace `YOUR_USERNAME` with your GitHub username.
 
-### 2. Install dependencies
+### 2. Create the Virtual Environment
+
+```bash
+uv venv
+```
+
+Activate the environment in PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+### 3. Install Dependencies
 
 If the repository contains `pyproject.toml` and `uv.lock`, run:
 
@@ -146,16 +170,33 @@ If the repository contains `pyproject.toml` and `uv.lock`, run:
 uv sync
 ```
 
-### 3. Configure Google OAuth
+## ☁️ Google Cloud Setup
+
+### 1. Create a Google Cloud Project
 
 1. Open the [Google Cloud Console](https://console.cloud.google.com/).
 2. Create or select a project.
-3. Enable the Gmail API.
-4. Configure the OAuth consent screen.
-5. Create an OAuth client suitable for a local desktop application.
-6. Download the OAuth client JSON file and save it locally as `credentials.json`.
+3. Navigate to **APIs & Services**.
+4. Open **Library**.
+5. Search for **Gmail API**.
+6. Enable the API.
 
-The application requests this scope:
+### 2. Configure OAuth Consent Screen
+
+1. Open Google Auth Platform.
+2. Configure the application information.
+3. Select the appropriate audience.
+4. Configure the required OAuth permissions.
+5. Add test users if the application is in testing mode.
+
+### 3. Create OAuth Credentials
+
+1. Navigate to the OAuth client configuration.
+2. Create an OAuth client suitable for a local desktop application.
+3. Download the OAuth client JSON file.
+4. Save it in the project root as `credentials.json`.
+
+The application requests the following scope:
 
 ```python
 SCOPES = [
@@ -167,40 +208,137 @@ For an OAuth application in testing mode, your Google account may need to be add
 
 **Security:** Never commit OAuth credentials or access tokens. If credentials are exposed, revoke them and rotate them as appropriate.
 
-### 4. Run the MCP server
+## 🔐 Google OAuth Authentication
+
+The project uses two files for Google authentication:
+
+| File | Purpose |
+|---|---|
+| `credentials.json` | Contains the OAuth client credentials downloaded from Google Cloud Console |
+| `token.json` | Stores the authentication token generated after successful authorization |
+
+### Authentication Flow
+
+1. The MCP server starts.
+2. The authentication module checks for an existing token.
+3. If a valid token exists, it is reused.
+4. Otherwise, the OAuth authorization flow is initiated.
+5. After successful authorization, the token is generated and saved.
+6. The authenticated credentials are used to access the Gmail API.
+
+Each user should authorize the application using their own Google account. For an OAuth application in testing mode, the account must be added as a test user.
+
+## ▶️ Running the MCP Server
 
 Run the server from the project root:
 
-```bash
-uv run python server.py
+```powershell
+uv run fastmcp run server.py --transport stdio
 ```
 
-The server uses the MCP transport configured by FastMCP. For an MCP client that launches local processes, configure it to start this command using the appropriate executable and working directory.
+The server uses STDIO transport. An MCP client can launch the local server process and communicate with it through standard input and output.
 
-## 🔌 MCP Client Configuration
+**Note:** The command above is intended for the FastMCP CLI execution setup used by this project.
 
-For an MCP client that supports local STDIO servers, use a configuration similar to the following:
+## 🔌 Codex Integration
 
-```json
-{
-  "mcpServers": {
-    "gmail-readonly": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "C:\\path\\to\\gmail-mcp",
-        "python",
-        "server.py"
-      ]
-    }
-  }
-}
+OpenAI Codex is an AI coding agent that can connect to external MCP servers and use their tools while working with a project.
+
+### 1. Install Codex CLI
+
+On Windows, open PowerShell and use the official installation instructions:
+
+https://developers.openai.com/codex/cli/
+
+Alternatively, install through npm if Node.js and npm are available:
+
+```powershell
+npm install -g @openai/codex
 ```
 
-Replace `C:\\path\\to\\gmail-mcp` with the absolute path to your project directory.
+Verify the installation:
 
-Restart or refresh your MCP client after saving the configuration. The exact configuration location depends on the client.
+```powershell
+codex --version
+```
+
+### 2. Register the Gmail MCP Server
+
+Codex supports registering local MCP servers through its CLI.
+
+Use the following command in PowerShell:
+
+```powershell
+codex mcp add gmail_readonly_mcp -- "PATH_TO_UV_EXE" run --directory "PATH_TO_GMAIL_MCP" fastmcp run server.py --transport stdio
+```
+
+Replace:
+
+- `PATH_TO_UV_EXE` with the absolute path to your `uv.exe`.
+- `PATH_TO_GMAIL_MCP` with the absolute path to your Gmail MCP project directory.
+
+This configuration allows Codex to launch the FastMCP server locally using STDIO transport.
+
+### 3. Verify the MCP Connection
+
+```powershell
+codex mcp list
+```
+
+The registered Gmail MCP server should appear in the list.
+
+Navigate to the project directory and start Codex:
+
+```powershell
+cd PATH_TO_GMAIL_MCP
+codex
+```
+
+Codex can now discover the registered Gmail MCP tools and invoke them when appropriate.
+
+### 4. Example Instructions
+
+```text
+Find recent emails from a particular sender.
+```
+
+```text
+Search for emails containing a specified keyword.
+```
+
+```text
+Retrieve the complete details of a particular email.
+```
+
+```text
+Show the messages belonging to a specific email conversation.
+```
+
+```text
+Download an attachment from a selected email.
+```
+
+## 💻 ChatGPT for Windows
+
+ChatGPT for Windows can be used alongside Codex during development.
+
+Download the application:
+
+https://chatgpt.com/download/
+
+ChatGPT can assist with:
+
+- Understanding the project architecture.
+- Explaining FastMCP and MCP concepts.
+- Reviewing Python code.
+- Debugging authentication and API errors.
+- Understanding Gmail API operations.
+- Improving documentation.
+- Planning additional MCP tools.
+
+You can provide relevant source files, code, or error logs when asking questions.
+
+**Note:** Installing the ChatGPT Windows application does not automatically connect it to the local Gmail MCP server. The local MCP integration described in this README is configured through Codex. Direct ChatGPT MCP integration requires a separately supported connection and configuration.
 
 ## 🔐 Security
 
@@ -214,10 +352,33 @@ Security is an important part of this project.
 - Limits attachment download size.
 - Avoids overwriting files with the same filename.
 
+Ensure that `.gitignore` includes:
+
+```gitignore
+# Python environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Testing cache
+.pytest_cache/
+
+# Google OAuth credentials
+credentials.json
+token.json
+
+# Downloaded attachments
+downloads/
+
+# Environment variables
+.env
+```
+
 Email messages and attachments should be treated as untrusted input. An AI assistant should not follow instructions embedded in an email that conflict with its system instructions or the user's actual request.
 
 > Read-only API access limits what this application can do through the authorized Gmail API scope. It does not mean that downloaded email content or local files are automatically safe.
-
 
 ## 🤝 Contributing
 
@@ -228,6 +389,6 @@ Contributions, suggestions, and bug reports are welcome.
 3. Make your changes and add tests where appropriate.
 4. Submit a pull request describing the changes.
 
-**Written using AI and verified my repo-owner**
+**Written using AI and reviewed by the repository owner.**
 
-**Built with Python, Gmail API, and Model Context Protocol (MCP).**
+**Built with Python, Gmail API, and Model Context Protocol (MCP).

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from datetime import date, time
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from googleapiclient.errors import HttpError
 
 from services.auth import get_gmail_service
