@@ -1,4 +1,3 @@
-
 """
 Gmail Read-Only MCP Server
 
@@ -25,6 +24,12 @@ from services import search as search_service
 from services import email_parser
 from services import attachment_service
 
+from validator.pydantic_class import (
+    SearchEmailsRequest,
+    GetEmailDetailsInput,
+    GetEmailConversationInput,
+    GetAttachmentInput,
+)
 
 # --------------------------------------------------
 # 1. CREATE MCP SERVER
@@ -35,6 +40,7 @@ mcp = FastMCP("Gmail Read-Only MCP")
 # --------------------------------------------------
 # 2. REUSE AUTHENTICATED GMAIL SERVICE
 # --------------------------------------------------
+
 
 @lru_cache(maxsize=1)
 def get_service():
@@ -49,12 +55,14 @@ def get_service():
 # 3. COMMON VALIDATION / ERROR HELPERS
 # --------------------------------------------------
 
+
 def _validate_id(value: str, field_name: str) -> str:
     """Validate a Gmail message, thread, or attachment ID."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must not be empty.")
 
     return value.strip()
+
 
 def _validate_max_results(max_results: int) -> int:
     """Limit the number of search results returned."""
@@ -65,42 +73,6 @@ def _validate_max_results(max_results: int) -> int:
         raise ValueError("max_results must be between 1 and 50.")
 
     return max_results
-
-def _validate_date(value: str | None, field_name: str):
-    """Validate an optional ISO date in YYYY-MM-DD format."""
-    if value is None:
-        return None
-
-    try:
-        date.fromisoformat(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{field_name} must use YYYY-MM-DD format."
-        ) from exc
-
-    # Require the exact format, not another accepted ISO representation.
-    if len(value) != 10:
-        raise ValueError(f"{field_name} must use YYYY-MM-DD format.")
-
-    return value
-
-
-def _validate_time(value: str | None, field_name: str):
-    """Validate an optional 24-hour time in HH:MM format."""
-    if value is None:
-        return None
-
-    try:
-        time.fromisoformat(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{field_name} must use HH:MM format."
-        ) from exc
-
-    if len(value) != 5:
-        raise ValueError(f"{field_name} must use HH:MM format.")
-
-    return value
 
 
 def _error_result(exc: Exception) -> dict[str, Any]:
@@ -126,21 +98,10 @@ def _error_result(exc: Exception) -> dict[str, Any]:
 # 4. TOOL: SEARCH EMAILS
 # --------------------------------------------------
 
+
 @mcp.tool()
 def search_emails(
-    sender: str | None = None,
-    recipient: str | None = None,
-    subject: str | None = None,
-    keyword: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    time_date: str | None = None,
-    start_time: str | None = None,
-    end_time: str | None = None,
-    has_attachment: bool | None = None,
-    is_unread: bool | None = None,
-    max_results: int = 10,
-    page_token: str | None = None,
+    params : SearchEmailsRequest
 ) -> dict[str, Any]:
     """
     Search Gmail by sender, recipient, subject, keyword, date,
@@ -152,14 +113,44 @@ def search_emails(
     Returns matching emails with parsed headers and snippets/body.
     """
     try:
+        #  params values
+        sender = params.sender
+        recipient = params.recipient
+        subject = params.subject
+        keyword = params.keyword
+
+        start_date = (
+            params.start_date.isoformat()
+            if params.start_date else None
+        )
+
+        end_date = (
+            params.end_date.isoformat()
+            if params.end_date else None
+        )
+
+        time_date = (
+            params.time_date.isoformat()
+            if params.time_date else None
+        )
+
+        start_time = (
+            params.start_time.strftime("%H:%M")
+            if params.start_time else None
+        )
+
+        end_time = (
+            params.end_time.strftime("%H:%M")
+            if params.end_time else None
+        )
+
+        has_attachment = params.has_attachment
+        is_unread = params.is_unread
+        max_results = params.max_results
+        page_token = params.page_token
+
+        #  validation
         max_results = _validate_max_results(max_results)
-
-        start_date = _validate_date(start_date, "start_date")
-        end_date = _validate_date(end_date, "end_date")
-        time_date = _validate_date(time_date, "time_date")
-
-        start_time = _validate_time(start_time, "start_time")
-        end_time = _validate_time(end_time, "end_time")
 
         page_token = page_token or ""
 
@@ -167,14 +158,10 @@ def search_emails(
             raise ValueError("start_date must not be after end_date.")
 
         if (start_time is None) != (end_time is None):
-            raise ValueError(
-                "Provide both start_time and end_time."
-            )
+            raise ValueError("Provide both start_time and end_time.")
 
         if (time_date is None) != (start_time is None):
-            raise ValueError(
-                "Provide time_date, start_time, and end_time together."
-            )
+            raise ValueError("Provide time_date, start_time, and end_time together.")
 
         # if not any([
         #     sender, recipient, subject, keyword,
@@ -236,33 +223,29 @@ def search_emails(
                 format="metadata",
             )
 
-            headers = email_parser.get_headers(
-                raw_message.get("payload", {})
-            )
+            headers = email_parser.get_headers(raw_message.get("payload", {}))
 
-            parsed_messages.append({
-                "message_id": raw_message.get("id"),
-                "thread_id": raw_message.get("threadId"),
-                "from": headers.get("from"),
-                "to": headers.get("to"),
-                "subject": headers.get("subject"),
-                "date": headers.get("date"),
-                "snippet": raw_message.get("snippet", ""),
-                "has_attachments": bool(
-                    email_parser.attachments(
-                        raw_message.get("payload", {})
-                    )
-                ),
-                "labels": raw_message.get("labelIds", []),
-            })
+            parsed_messages.append(
+                {
+                    "message_id": raw_message.get("id"),
+                    "thread_id": raw_message.get("threadId"),
+                    "from": headers.get("from"),
+                    "to": headers.get("to"),
+                    "subject": headers.get("subject"),
+                    "date": headers.get("date"),
+                    "snippet": raw_message.get("snippet", ""),
+                    "has_attachments": bool(
+                        email_parser.attachments(raw_message.get("payload", {}))
+                    ),
+                    "labels": raw_message.get("labelIds", []),
+                }
+            )
 
         return {
             "ok": True,
             "query": result.get("query", ""),
             "timezone": result.get("timezone"),
-            "result_size_estimate": result.get(
-                "result_size_estimate", 0
-            ),
+            "result_size_estimate": result.get("result_size_estimate", 0),
             "returned_count": len(parsed_messages),
             "next_page_token": result.get("next_page_token"),
             "emails": parsed_messages,
@@ -278,8 +261,9 @@ def search_emails(
 # 5. TOOL: GET ONE EMAIL'S DETAILS
 # --------------------------------------------------
 
+
 @mcp.tool()
-def get_email_details(message_id: str) -> dict[str, Any]:
+def get_email_details( params : GetEmailDetailsInput) -> dict[str, Any]:
     """
     Retrieve one email by its Gmail message ID.
 
@@ -287,6 +271,11 @@ def get_email_details(message_id: str) -> dict[str, Any]:
     labels, conversation ID, and attachment metadata.
     """
     try:
+
+        # parameters
+        message_id = params.message_id
+
+        # validation
         message_id = _validate_id(message_id, "message_id")
 
         service = get_service()
@@ -314,8 +303,9 @@ def get_email_details(message_id: str) -> dict[str, Any]:
 # 6. TOOL: GET AN EMAIL CONVERSATION
 # --------------------------------------------------
 
+
 @mcp.tool()
-def get_email_conversation(thread_id: str) -> dict[str, Any]:
+def get_email_conversation(params : GetEmailConversationInput) -> dict[str, Any]:
     """
     Retrieve every message in a Gmail conversation by thread ID.
 
@@ -323,6 +313,11 @@ def get_email_conversation(thread_id: str) -> dict[str, Any]:
     body text, timestamps, and attachment metadata.
     """
     try:
+
+        # parameters
+        thread_id = params.thread_id
+
+        # validator
         thread_id = _validate_id(thread_id, "thread_id")
 
         service = get_service()
@@ -350,13 +345,10 @@ def get_email_conversation(thread_id: str) -> dict[str, Any]:
 # 7. TOOL: GET / DOWNLOAD AN ATTACHMENT
 # --------------------------------------------------
 
+
 @mcp.tool()
 def get_attachment(
-    message_id: str,
-    attachment_id: str,
-    filename: str,
-    mime_type: str = "application/octet-stream",
-    size_bytes: int | None = None,
+    params : GetAttachmentInput
 ) -> dict[str, Any]:
     """
     Fetch and save an attachment from a specific Gmail message.
@@ -370,6 +362,14 @@ def get_attachment(
     The attachment is retrieved read-only from Gmail.
     """
     try:
+        # parameters
+        message_id = params.message_id
+        attachment_id = params.attachment_id
+        filename = params.filename
+        size_bytes = params.size_bytes
+        mime_type = params.mime_type
+
+        #  validator
         message_id = _validate_id(message_id, "message_id")
         attachment_id = _validate_id(attachment_id, "attachment_id")
         filename = _validate_id(filename, "filename")
@@ -396,9 +396,7 @@ def get_attachment(
             format="full",
         )
 
-        available_attachments = email_parser.attachments(
-            raw_message.get("payload", {})
-        )
+        available_attachments = email_parser.attachments(raw_message.get("payload", {}))
 
         matched_attachment = next(
             (
@@ -410,15 +408,13 @@ def get_attachment(
         )
 
         if matched_attachment is None:
-            raise ValueError(
-                "The specified attachment does not belong to this email."
-            )
+            raise ValueError("The specified attachment does not belong to this email.")
 
         # Use metadata obtained from Gmail, not caller-supplied metadata.
         attachment_metadata = {
             "filename": matched_attachment.get("filename") or filename,
             "mime_type": matched_attachment.get("mime_type")
-                or "application/octet-stream",
+            or "application/octet-stream",
             "attachment_id": attachment_id,
             "size_bytes": matched_attachment.get("size_bytes"),
         }
@@ -439,6 +435,7 @@ def get_attachment(
         return _error_result(exc)
     except Exception as exc:
         return _error_result(exc)
+
 
 # --------------------------------------------------
 # 8. START MCP SERVER

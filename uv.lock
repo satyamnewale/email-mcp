@@ -523,6 +523,7 @@ dependencies = [
     { name = "google-api-python-client" },
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },
+    { name = "pydantic" },
     { name = "tzlocal" },
 ]
 
@@ -537,6 +538,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.201.0" },
     { name = "google-auth", specifier = ">=2.62.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.5.0" },
+    { name = "pydantic", specifier = ">=2.14.1" },
     { name = "tzlocal", specifier = ">=5.4.5" },
 ]
 
