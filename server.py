@@ -24,12 +24,12 @@ from services import search as search_service
 from services import email_parser
 from services import attachment_service
 
-from validator.pydantic_class import (
-    SearchEmailsRequest,
-    GetEmailDetailsInput,
-    GetEmailConversationInput,
-    GetAttachmentInput,
-)
+# from validator.pydantic_class import (
+#     SearchEmailsRequest,
+#     GetEmailDetailsInput,
+#     GetEmailConversationInput,
+#     GetAttachmentInput,
+# )
 
 # --------------------------------------------------
 # 1. CREATE MCP SERVER
@@ -93,6 +93,41 @@ def _error_result(exc: Exception) -> dict[str, Any]:
         },
     }
 
+def _validate_date(value: str | None, field_name: str):
+    """Validate an optional ISO date in YYYY-MM-DD format."""
+    if value is None:
+        return None
+
+    try:
+        date.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{field_name} must use YYYY-MM-DD format."
+        ) from exc
+
+    # Require the exact format, not another accepted ISO representation.
+    if len(value) != 10:
+        raise ValueError(f"{field_name} must use YYYY-MM-DD format.")
+
+    return value
+
+
+def _validate_time(value: str | None, field_name: str):
+    """Validate an optional 24-hour time in HH:MM format."""
+    if value is None:
+        return None
+
+    try:
+        time.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{field_name} must use HH:MM format."
+        ) from exc
+
+    if len(value) != 5:
+        raise ValueError(f"{field_name} must use HH:MM format.")
+
+    return value
 
 # --------------------------------------------------
 # 4. TOOL: SEARCH EMAILS
@@ -101,7 +136,20 @@ def _error_result(exc: Exception) -> dict[str, Any]:
 
 @mcp.tool()
 def search_emails(
-    params : SearchEmailsRequest
+    # params : SearchEmailsRequest
+    sender: str | None = None,
+    recipient: str | None = None,
+    subject: str | None = None,
+    keyword: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    time_date: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    has_attachment: bool | None = None,
+    is_unread: bool | None = None,
+    max_results: int = 10,
+    page_token: str | None = None,
 ) -> dict[str, Any]:
     """
     Search Gmail by sender, recipient, subject, keyword, date,
@@ -113,44 +161,47 @@ def search_emails(
     Returns matching emails with parsed headers and snippets/body.
     """
     try:
-        #  params values
-        sender = params.sender
-        recipient = params.recipient
-        subject = params.subject
-        keyword = params.keyword
+        # #  params values
+        # sender = params.sender
+        # recipient = params.recipient
+        # subject = params.subject
+        # keyword = params.keyword
 
-        start_date = (
-            params.start_date.isoformat()
-            if params.start_date else None
-        )
+        # start_date = (
+        #     params.start_date.isoformat()
+        #     if params.start_date else None
+        # )
 
-        end_date = (
-            params.end_date.isoformat()
-            if params.end_date else None
-        )
+        # end_date = (
+        #     params.end_date.isoformat()
+        #     if params.end_date else None
+        # )
 
-        time_date = (
-            params.time_date.isoformat()
-            if params.time_date else None
-        )
+        # time_date = (
+        #     params.time_date.isoformat()
+        #     if params.time_date else None
+        # )
 
-        start_time = (
-            params.start_time.strftime("%H:%M")
-            if params.start_time else None
-        )
+        # start_time = (
+        #     params.start_time.strftime("%H:%M")
+        #     if params.start_time else None
+        # )
 
-        end_time = (
-            params.end_time.strftime("%H:%M")
-            if params.end_time else None
-        )
+        # end_time = (
+        #     params.end_time.strftime("%H:%M")
+        #     if params.end_time else None
+        # )
 
-        has_attachment = params.has_attachment
-        is_unread = params.is_unread
-        max_results = params.max_results
-        page_token = params.page_token
+        # has_attachment = params.has_attachment
+        # is_unread = params.is_unread
+        # max_results = params.max_results
+        # page_token = params.page_token
 
         #  validation
         max_results = _validate_max_results(max_results)
+        start_date = _validate_date(start_date, "start_date")
+        end_date = _validate_date(end_date, "end_date")
+        time_date = _validate_date(time_date, "time_date")
 
         page_token = page_token or ""
 
@@ -263,7 +314,10 @@ def search_emails(
 
 
 @mcp.tool()
-def get_email_details( params : GetEmailDetailsInput) -> dict[str, Any]:
+def get_email_details( 
+        # params : GetEmailDetailsInput
+        message_id : str
+    ) -> dict[str, Any]:
     """
     Retrieve one email by its Gmail message ID.
 
@@ -273,7 +327,7 @@ def get_email_details( params : GetEmailDetailsInput) -> dict[str, Any]:
     try:
 
         # parameters
-        message_id = params.message_id
+        # message_id = params.message_id
 
         # validation
         message_id = _validate_id(message_id, "message_id")
@@ -305,7 +359,10 @@ def get_email_details( params : GetEmailDetailsInput) -> dict[str, Any]:
 
 
 @mcp.tool()
-def get_email_conversation(params : GetEmailConversationInput) -> dict[str, Any]:
+def get_email_conversation(
+        # params : GetEmailConversationInput
+        thread_id : str
+    ) -> dict[str, Any]:
     """
     Retrieve every message in a Gmail conversation by thread ID.
 
@@ -314,8 +371,8 @@ def get_email_conversation(params : GetEmailConversationInput) -> dict[str, Any]
     """
     try:
 
-        # parameters
-        thread_id = params.thread_id
+        # # parameters
+        # thread_id = params.thread_id
 
         # validator
         thread_id = _validate_id(thread_id, "thread_id")
@@ -348,7 +405,12 @@ def get_email_conversation(params : GetEmailConversationInput) -> dict[str, Any]
 
 @mcp.tool()
 def get_attachment(
-    params : GetAttachmentInput
+    # params : GetAttachmentInput
+    message_id : str,
+    attachment_id : str,
+    filename : str,
+    size_bytes : int | None = None,
+    mime_type : str = "application/octet-stream",
 ) -> dict[str, Any]:
     """
     Fetch and save an attachment from a specific Gmail message.
@@ -362,12 +424,12 @@ def get_attachment(
     The attachment is retrieved read-only from Gmail.
     """
     try:
-        # parameters
-        message_id = params.message_id
-        attachment_id = params.attachment_id
-        filename = params.filename
-        size_bytes = params.size_bytes
-        mime_type = params.mime_type
+        # # parameters
+        # message_id = params.message_id
+        # attachment_id = params.attachment_id
+        # filename = params.filename
+        # size_bytes = params.size_bytes
+        # mime_type = params.mime_type
 
         #  validator
         message_id = _validate_id(message_id, "message_id")

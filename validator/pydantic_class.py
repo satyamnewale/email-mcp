@@ -1,122 +1,133 @@
 from pydantic import BaseModel, Field , model_validator, field_validator, ConfigDict
-from datetime import date, time
+from datetime import date, time, datetime
 from pathlib import PurePath
 import re
 
 # search email request
 class SearchEmailsRequest(BaseModel):
 
-    # 1. model configs
+    # --------------------------------------------------
+    # 1. MODEL CONFIGURATION
+    # --------------------------------------------------
+
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
-            "allOf" :[
+            "allOf": [
                 {
                     "if": {
-                        "anyOf" :[
-                            {
-                                "required":["time_date"],
-                                "properties":{
-                                    "time_date":{"type":"string"}
-                                },
-                            },
+                        "anyOf": [
                             {
                                 "required": ["start_time"],
-                                "properties": {
-                                    "start_time": {"type": "string"}
-                                },
                             },
                             {
                                 "required": ["end_time"],
-                                "properties": {
-                                    "end_time": {"type": "string"}
-                                },
-                            }
+                            },
                         ]
                     },
-                    "then" :{
-                        "required":[
-                            "time_date",
-                            "start_time",
-                            "end_time",
-                        ],
-                        "properties":{
-                            "time_date":{"type":"string"},
-                            "start_time":{"type":"string"},
-                            "end_time":{"type":"string"},
-                        },
-                    }
+                    "then": {
+                        "required": ["time_date"],
+                    },
                 }
             ]
-        }
+        },
     )
 
-    # 2. model fields
+    # --------------------------------------------------
+    # 2. MODEL FIELDS
+    # --------------------------------------------------
 
-    sender: str | None = Field(None, description="Email address of sender.")
-    recipient: str | None = Field(None, description="Email address of recipient.")
-    subject: str | None = Field(None, description="Subject line.")
+    sender: str | None = Field(
+        default=None,
+        description="Email address of sender.",
+    )
+
+    recipient: str | None = Field(
+        default=None,
+        description="Email address of recipient.",
+    )
+
+    subject: str | None = Field(
+        default=None,
+        description="Subject line.",
+    )
 
     keyword: str | None = Field(
         default=None,
-        description="Search email content using a keyword."
+        description="Search email content using a keyword.",
     )
 
     start_date: date | None = Field(
         default=None,
-        description="Beginning of date range, YYYY-MM-DD."
+        description="Beginning of date range, YYYY-MM-DD.",
     )
 
     end_date: date | None = Field(
         default=None,
-        description="End of date range, YYYY-MM-DD."
+        description="End of date range, YYYY-MM-DD.",
     )
 
     time_date: date | None = Field(
         default=None,
-        description="Date for time-based search, YYYY-MM-DD."
+        description=(
+            "Calendar date on which the time-based search starts. "
+            "Required when start_time or end_time is supplied. "
+            "If only start_time is supplied, end_time defaults to 23:59. "
+            "If only end_time is supplied, start_time defaults to 00:00. "
+            "If neither is supplied, the search covers the entire date."
+        ),
     )
 
     start_time: time | None = Field(
         default=None,
-        description="Start time, HH:MM, 24-hour format."
+        description=(
+            "Start time, HH:MM, 24-hour format. "
+            "Requires time_date. Defaults to 00:00 when time_date is supplied."
+        ),
     )
 
-    end_time: time |None = Field(
+    end_time: time | None = Field(
         default=None,
-        description="End time, HH:MM, 24-hour format."
+        description=(
+            "End time, HH:MM, 24-hour format. "
+            "Requires time_date. Defaults to 23:59 when time_date is supplied. "
+            "An earlier or equal end time represents an interval crossing midnight."
+        ),
     )
 
     has_attachment: bool | None = Field(
         default=None,
-        description="True to find emails with attachments; false for without."
+        description="True to find emails with attachments; false for without.",
     )
 
     is_unread: bool | None = Field(
         default=None,
-        description="True to find unread emails; false for read emails."
+        description="True to find unread emails; false for read emails.",
     )
 
     max_results: int = Field(
         default=10,
         ge=1,
         le=100,
-        description="Maximum number of emails to return, between 1 and 100."
+        description="Maximum number of emails to return, between 1 and 100.",
     )
 
     page_token: str | None = Field(
         default=None,
         min_length=1,
-        description="Pagination token returned by a previous search."
+        description="Pagination token returned by a previous search.",
     )
 
-    # field validators
+    # --------------------------------------------------
+    # 3. STRING VALIDATORS
+    # --------------------------------------------------
+
     @field_validator(
-    "sender",
-    "recipient",
-    "subject",
-    "keyword",
-    "page_token",
+        "sender",
+        "recipient",
+        "subject",
+        "keyword",
+        "page_token",
     )
     @classmethod
     def validate_search_strings(cls, value):
@@ -131,26 +142,55 @@ class SearchEmailsRequest(BaseModel):
 
         return value
 
-    @field_validator("start_date", "end_date", "time_date", mode="before")
+    # --------------------------------------------------
+    # 4. DATE VALIDATORS
+    # --------------------------------------------------
+
+    @field_validator(
+        "start_date",
+        "end_date",
+        "time_date",
+        mode="before",
+    )
     @classmethod
     def validate_dates(cls, value):
 
         if value is None:
             return value
 
+        if isinstance(value, datetime):
+            raise ValueError(
+                "Date must use YYYY-MM-DD format, not datetime."
+            )
+
         if isinstance(value, date):
             return value
 
         if not isinstance(value, str):
-            raise ValueError("Date must be a string in YYYY-MM-DD format.")
+            raise ValueError(
+                "Date must be a string in YYYY-MM-DD format."
+            )
+
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError(
+                "Date must use YYYY-MM-DD format."
+            )
 
         try:
             return date.fromisoformat(value)
+
         except ValueError:
-            raise ValueError("Date must use YYYY-MM-DD format.")
+            raise ValueError("Invalid calendar date.")
 
+    # --------------------------------------------------
+    # 5. TIME VALIDATORS
+    # --------------------------------------------------
 
-    @field_validator("start_time", "end_time", mode="before")
+    @field_validator(
+        "start_time",
+        "end_time",
+        mode="before",
+    )
     @classmethod
     def validate_times(cls, value):
 
@@ -158,82 +198,28 @@ class SearchEmailsRequest(BaseModel):
             return value
 
         if isinstance(value, time):
+            if value.tzinfo is not None:
+                raise ValueError("Timezone-aware times are not supported.")
+            if value.second != 0 or value.microsecond != 0:
+                raise ValueError("Time must use HH:MM format.")
             return value
 
         if not isinstance(value, str):
-            raise ValueError("Time must be a string in HH:MM format.")
+            raise ValueError(
+                "Time must be a string in HH:MM format."
+            )
 
         if not re.fullmatch(r"\d{2}:\d{2}", value):
-            raise ValueError("Time must use HH:MM format.")
+            raise ValueError(
+                "Time must use HH:MM format."
+            )
 
         try:
             return time.fromisoformat(value)
+
         except ValueError:
             raise ValueError("Invalid time.")
 
-    # model validators
-
-    @model_validator(mode="after")
-    def validate_search_conditions(self):
-
-        # Date range validation
-        if (
-            self.start_date
-            and self.end_date
-            and self.start_date > self.end_date
-        ):
-            raise ValueError(
-                "start_date cannot be after end_date."
-            )
-
-        # Time fields must be supplied together
-        time_values = [
-            self.time_date,
-            self.start_time,
-            self.end_time,
-        ]
-
-        supplied = [value is not None for value in time_values]
-
-        if any(supplied) and not all(supplied):
-            raise ValueError(
-                "time_date, start_time and end_time "
-                "must be provided together."
-            )
-
-        # Start time must be earlier than end time
-        if self.start_time and self.end_time:
-            if self.start_time >= self.end_time:
-                raise ValueError(
-                    "start_time must be earlier than end_time."
-                )
-
-        # Do not combine date-range and time-range filters
-        if self.time_date and (self.start_date or self.end_date):
-            raise ValueError(
-                "Use either date-range filtering or "
-                "time-range filtering, not both."
-            )
-
-        # Require at least one actual search condition
-        search_conditions = [
-            self.sender,
-            self.recipient,
-            self.subject,
-            self.keyword,
-            self.start_date,
-            self.end_date,
-            self.time_date,
-            self.has_attachment,
-            self.is_unread,
-        ]
-
-        if not any(value is not None for value in search_conditions):
-            raise ValueError(
-                "Provide at least one search condition."
-            )
-
-        return self
 
 # get email details
 class GetEmailDetailsInput(BaseModel):
