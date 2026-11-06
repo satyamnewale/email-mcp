@@ -278,6 +278,4 @@ def search_emails(
         }
 
     except HttpError as err:
-        raise RuntimeError(
-            f"An error occurred while searching Gmail: {err}"
-        ) from err
+        raise

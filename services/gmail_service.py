@@ -26,7 +26,7 @@ def list_messages(service, query=None, max_results=10, page_token=None, label_id
         }
 
     except HttpError as err:
-        raise RuntimeError(f"An error occurred: {err}\n") from err
+        raise
 
 def get_message(service, message_id, format="full"):
 
@@ -41,7 +41,7 @@ def get_message(service, message_id, format="full"):
             ).execute()
         )
     except HttpError as err:
-        raise RuntimeError(f"An error occurred: {err}\n") from err
+        raise
 
 def get_thread( service, thread_id, format="full"):
     try:
@@ -55,7 +55,7 @@ def get_thread( service, thread_id, format="full"):
             ).execute()
         )
     except HttpError as err:
-        raise RuntimeError(f"An error occurred: {err}\n") from err
+        raise
 
 def get_attachment_data(service, message_id, attachment_id):
     try :
@@ -70,4 +70,4 @@ def get_attachment_data(service, message_id, attachment_id):
             ).execute()
         )
     except HttpError as err:
-        raise RuntimeError(f"An error occurred: {err}\n") from err
+        raise

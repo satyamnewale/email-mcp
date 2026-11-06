@@ -1,9 +1,21 @@
-from pydantic import BaseModel, Field , model_validator, field_validator, ConfigDict
+from pydantic import BaseModel, Field , field_validator, ConfigDict
 from datetime import date, time, datetime
 from pathlib import PurePath
 import re
 
 # search email request
+
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    field_validator,
+    model_validator,
+)
+from datetime import date, time, datetime
+import re
+
+
 class SearchEmailsRequest(BaseModel):
 
     # --------------------------------------------------
@@ -12,114 +24,147 @@ class SearchEmailsRequest(BaseModel):
 
     model_config = ConfigDict(
         extra="forbid",
-        json_schema_extra={
-            "allOf": [
-                {
-                    "if": {
-                        "anyOf": [
-                            {
-                                "required": ["start_time"],
-                            },
-                            {
-                                "required": ["end_time"],
-                            },
-                        ]
-                    },
-                    "then": {
-                        "required": ["time_date"],
-                    },
-                }
-            ]
-        },
     )
 
     # --------------------------------------------------
-    # 2. MODEL FIELDS
+    # 2. SEARCH FILTERS
     # --------------------------------------------------
 
     sender: str | None = Field(
         default=None,
-        description="Email address of sender.",
+        min_length=1,
+        max_length=320,
+        description=(
+            "Sender's email address or name. "
+            "Use when the user wants emails from a particular person."
+        ),
     )
 
     recipient: str | None = Field(
         default=None,
-        description="Email address of recipient.",
+        min_length=1,
+        max_length=320,
+        description=(
+            "Recipient's email address or name. "
+            "Use when the user wants emails sent to a particular person."
+        ),
     )
 
     subject: str | None = Field(
         default=None,
-        description="Subject line.",
+        min_length=1,
+        max_length=500,
+        description=(
+            "Full or partial email subject to search for."
+        ),
     )
 
     keyword: str | None = Field(
         default=None,
-        description="Search email content using a keyword.",
+        min_length=1,
+        max_length=1000,
+        description=(
+            "Keyword or phrase to search within matching emails."
+        ),
     )
+
+    # --------------------------------------------------
+    # 3. DATE FILTERS
+    # --------------------------------------------------
 
     start_date: date | None = Field(
         default=None,
-        description="Beginning of date range, YYYY-MM-DD.",
+        description=(
+            "Inclusive beginning of the date range. "
+            "Must use YYYY-MM-DD format."
+        ),
     )
 
     end_date: date | None = Field(
         default=None,
-        description="End of date range, YYYY-MM-DD.",
+        description=(
+            "Inclusive ending of the date range. "
+            "Must use YYYY-MM-DD format."
+        ),
     )
+
+    # --------------------------------------------------
+    # 4. TIME FILTERS
+    # --------------------------------------------------
 
     time_date: date | None = Field(
         default=None,
         description=(
-            "Calendar date on which the time-based search starts. "
-            "Required when start_time or end_time is supplied. "
-            "If only start_time is supplied, end_time defaults to 23:59. "
-            "If only end_time is supplied, start_time defaults to 00:00. "
-            "If neither is supplied, the search covers the entire date."
+            "Calendar date for the time-based search. "
+            "Must be provided together with start_time and end_time. "
+            "Format: YYYY-MM-DD."
         ),
     )
 
     start_time: time | None = Field(
         default=None,
         description=(
-            "Start time, HH:MM, 24-hour format. "
-            "Requires time_date. Defaults to 00:00 when time_date is supplied."
+            "Beginning of the time range in HH:MM 24-hour format. "
+            "Requires time_date and end_time."
         ),
     )
 
     end_time: time | None = Field(
         default=None,
         description=(
-            "End time, HH:MM, 24-hour format. "
-            "Requires time_date. Defaults to 23:59 when time_date is supplied. "
-            "An earlier or equal end time represents an interval crossing midnight."
+            "End of the time range in HH:MM 24-hour format. "
+            "Requires time_date and start_time. "
+            "An earlier or equal end time represents the following day."
         ),
     )
 
+    # --------------------------------------------------
+    # 5. BOOLEAN FILTERS
+    # --------------------------------------------------
+
     has_attachment: bool | None = Field(
         default=None,
-        description="True to find emails with attachments; false for without.",
+        description=(
+            "True to find emails with attachments; "
+            "False to find emails without attachments; "
+            "None to apply no attachment filter."
+        ),
     )
 
     is_unread: bool | None = Field(
         default=None,
-        description="True to find unread emails; false for read emails.",
+        description=(
+            "True to find unread emails; "
+            "False to find read emails; "
+            "None to apply no read-status filter."
+        ),
     )
+
+    # --------------------------------------------------
+    # 6. PAGINATION
+    # --------------------------------------------------
 
     max_results: int = Field(
         default=10,
         ge=1,
-        le=100,
-        description="Maximum number of emails to return, between 1 and 100.",
+        le=50,
+        description=(
+            "Maximum number of emails to return. "
+            "Defaults to 10. Allowed range: 1-50."
+        ),
     )
 
     page_token: str | None = Field(
         default=None,
         min_length=1,
-        description="Pagination token returned by a previous search.",
+        description=(
+            "Pagination token returned by a previous search. "
+            "Use only when retrieving the next page of that search."
+        ),
     )
 
     # --------------------------------------------------
-    # 3. STRING VALIDATORS
+    # 7. STRING VALIDATION
     # --------------------------------------------------
 
     @field_validator(
@@ -133,17 +178,19 @@ class SearchEmailsRequest(BaseModel):
     def validate_search_strings(cls, value):
 
         if value is None:
-            return value
+            return None
 
         value = value.strip()
 
         if not value:
-            raise ValueError("Search values cannot be empty.")
+            raise ValueError(
+                "Search values cannot be empty or whitespace."
+            )
 
         return value
 
     # --------------------------------------------------
-    # 4. DATE VALIDATORS
+    # 8. DATE VALIDATION
     # --------------------------------------------------
 
     @field_validator(
@@ -156,7 +203,7 @@ class SearchEmailsRequest(BaseModel):
     def validate_dates(cls, value):
 
         if value is None:
-            return value
+            return None
 
         if isinstance(value, datetime):
             raise ValueError(
@@ -179,11 +226,13 @@ class SearchEmailsRequest(BaseModel):
         try:
             return date.fromisoformat(value)
 
-        except ValueError:
-            raise ValueError("Invalid calendar date.")
+        except ValueError as exc:
+            raise ValueError(
+                "Invalid calendar date."
+            ) from exc
 
     # --------------------------------------------------
-    # 5. TIME VALIDATORS
+    # 9. TIME VALIDATION
     # --------------------------------------------------
 
     @field_validator(
@@ -195,13 +244,20 @@ class SearchEmailsRequest(BaseModel):
     def validate_times(cls, value):
 
         if value is None:
-            return value
+            return None
 
         if isinstance(value, time):
+
             if value.tzinfo is not None:
-                raise ValueError("Timezone-aware times are not supported.")
+                raise ValueError(
+                    "Timezone-aware times are not supported."
+                )
+
             if value.second != 0 or value.microsecond != 0:
-                raise ValueError("Time must use HH:MM format.")
+                raise ValueError(
+                    "Time must use HH:MM format."
+                )
+
             return value
 
         if not isinstance(value, str):
@@ -217,125 +273,135 @@ class SearchEmailsRequest(BaseModel):
         try:
             return time.fromisoformat(value)
 
-        except ValueError:
-            raise ValueError("Invalid time.")
+        except ValueError as exc:
+            raise ValueError(
+                "Invalid time."
+            ) from exc
+
+    # --------------------------------------------------
+    # 10. MODEL-LEVEL VALIDATION
+    # --------------------------------------------------
+
+    @model_validator(mode="after")
+    def validate_search_parameters(self):
+
+        # Validate date range.
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.start_date > self.end_date
+        ):
+            raise ValueError(
+                "start_date must not be after end_date."
+            )
+
+        # Validate time filter dependencies.
+        time_fields = (
+            self.time_date,
+            self.start_time,
+            self.end_time,
+        )
+
+        provided_time_fields = sum(
+            value is not None for value in time_fields
+        )
+
+        if provided_time_fields not in (0, 3):
+            raise ValueError(
+                "time_date, start_time, and end_time "
+                "must all be provided together."
+            )
+
+        return self
 
 
-# get email details
+
 class GetEmailDetailsInput(BaseModel):
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+    )
 
     message_id: str = Field(
         min_length=1,
         max_length=256,
-        description="Required Gmail message ID."
+        description=(
+            "Gmail message ID of the specific email to retrieve. "
+            "Obtain this ID from search_emails results. "
+            "Required to retrieve the complete email details."
+        ),
     )
 
     @field_validator("message_id")
     @classmethod
     def validate_message_id(cls, value):
+
         value = value.strip()
 
         if not value:
-            raise ValueError("message_id cannot be empty.")
+            raise ValueError(
+                "message_id cannot be empty."
+            )
 
         return value
 
 # get email conversation
+
 class GetEmailConversationInput(BaseModel):
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+    )
 
     thread_id: str = Field(
         min_length=1,
         max_length=256,
-        description="Required Gmail conversation/thread ID."
+        description=(
+            "Gmail conversation/thread ID identifying the "
+            "conversation to retrieve. Obtain this ID from "
+            "search_emails results or email details. "
+            "Returns all messages belonging to that thread."
+        ),
     )
 
     @field_validator("thread_id")
     @classmethod
     def validate_thread_id(cls, value):
+
         value = value.strip()
 
         if not value:
-            raise ValueError("thread_id cannot be empty.")
+            raise ValueError(
+                "thread_id cannot be empty."
+            )
 
         return value
 
+
 # get email attachments
 class GetAttachmentInput(BaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     message_id: str = Field(
-        description="Gmail message ID containing the attachment."
+        ...,
+        min_length=1,
+        max_length=256,
+        description="Gmail message ID containing the attachment. Obtain this from search_emails or get_email_details.",
     )
 
     attachment_id: str = Field(
-        description="Gmail attachment ID."
-    )
-
-    filename: str = Field(
-        description="Attachment filename, not a filesystem path."
-    )
-
-    mime_type: str = Field(
-        default="application/octet-stream",
-        description="MIME type reported for the attachment."
-    )
-
-    size_bytes: int | None = Field(
-        default=None,
-        ge=0,
-        strict=True,
-        description="Attachment size in bytes, if known."
+        ...,
+        min_length=1,
+        max_length=256,
+        description="Attachment ID obtained from the attachment metadata returned by get_email_details.",
     )
 
     @field_validator("message_id", "attachment_id")
     @classmethod
-    def validate_ids(cls, value):
+    def validate_ids(cls, value: str) -> str:
         value = value.strip()
 
         if not value:
             raise ValueError("ID cannot be empty.")
-
-        return value
-
-    @field_validator("filename")
-    @classmethod
-    def validate_filename(cls, value):
-        value = value.strip()
-
-        if not value:
-            raise ValueError("Filename cannot be empty.")
-
-        if value in {".", ".."}:
-            raise ValueError("Invalid filename.")
-
-        if PurePath(value).name != value:
-            raise ValueError("Filename must not contain a path.")
-
-        if "/" in value or "\\" in value:
-            raise ValueError("Path separators are not allowed.")
-
-        if ".." in value:
-            raise ValueError("Filename cannot contain traversal patterns.")
-
-        if any(ord(char) < 32 for char in value):
-            raise ValueError("Control characters are not allowed.")
-
-        return value
-
-    @field_validator("mime_type")
-    @classmethod
-    def validate_mime_type(cls, value):
-        value = value.strip()
-
-        if not re.fullmatch(
-            r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+",
-            value,
-        ):
-            raise ValueError("Invalid MIME type.")
 
         return value
