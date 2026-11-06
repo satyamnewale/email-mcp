@@ -11,10 +11,7 @@ All Gmail operations use the readonly OAuth scope.
 """
 
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
-from datetime import date
-
 from fastmcp import FastMCP
 from googleapiclient.errors import HttpError
 
@@ -316,23 +313,23 @@ def _error_result(
     }
 
 
-def _validate_date(value: str | None, field_name: str):
-    """Validate an optional ISO date in YYYY-MM-DD format."""
-    if value is None:
-        return None
+# def _validate_date(value: str | None, field_name: str):
+#     """Validate an optional ISO date in YYYY-MM-DD format."""
+#     if value is None:
+#         return None
 
-    try:
-        date.fromisoformat(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{field_name} must use YYYY-MM-DD format."
-        ) from exc
+#     try:
+#         date.fromisoformat(value)
+#     except (TypeError, ValueError) as exc:
+#         raise ValueError(
+#             f"{field_name} must use YYYY-MM-DD format."
+#         ) from exc
 
-    # Require the exact format, not another accepted ISO representation.
-    if len(value) != 10:
-        raise ValueError(f"{field_name} must use YYYY-MM-DD format.")
+#     # Require the exact format, not another accepted ISO representation.
+#     if len(value) != 10:
+#         raise ValueError(f"{field_name} must use YYYY-MM-DD format.")
 
-    return value
+#     return value
 
 
 # def _validate_time(value: str | None, field_name: str):
@@ -359,83 +356,72 @@ def _validate_date(value: str | None, field_name: str):
 
 @mcp.tool()
 def search_emails(
-    params : SearchEmailsRequest
-    # sender: str | None = None,
-    # recipient: str | None = None,
-    # subject: str | None = None,
-    # keyword: str | None = None,
-    # start_date: str | None = None,
-    # end_date: str | None = None,
-    # time_date: str | None = None,
-    # start_time: str | None = None,
-    # end_time: str | None = None,
-    # has_attachment: bool | None = None,
-    # is_unread: bool | None = None,
-    # max_results: int = 10,
-    # page_token: str | None = None,
+    # params : SearchEmailsRequest
+    sender: str | None = None,
+    recipient: str | None = None,
+    subject: str | None = None,
+    keyword: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    time_date: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    has_attachment: bool | None = None,
+    is_unread: bool | None = None,
+    max_results: int = 10,
+    page_token: str | None = None,
 ) -> dict[str, Any]:
     """
-    Search and list emails from the user's Gmail mailbox using
-    optional search filters.
+Search and list Gmail emails using optional filters.
 
-    WHEN TO USE:
-    - When the user wants to find, search, list, or filter emails.
-    - When searching by sender, recipient, subject, or keywords.
-    - When searching within a date or time range.
-    - When filtering emails by attachment presence or read status.
-    - When the user requests their latest or most recent emails.
-    - When continuing a previous search using pagination.
+WHEN TO USE:
+- Find, list, or filter emails by sender, recipient, subject, keyword,
+  date, time, attachment presence, or read status.
+- Retrieve recent emails or continue a previous search.
 
-    SEARCH BEHAVIOR:
-    - Combine supplied search conditions to narrow the results.
-    - If no search conditions are provided, return the 10 most
-      recent emails by default.
-    - If the user requests a specific number of emails, set
-      max_results accordingly, within the supported limit.
-    - Do not invent missing search criteria.
-    - Do not interpret an unspecified filter as False.
-    - Use page_token only to continue a previous search.
+SEARCH BEHAVIOR:
+- Combine supplied filters.
+- If no filters are provided, return the 10 most recent emails.
+- Use max_results for the requested result count (maximum 50).
+- Use page_token only to continue a previous search.
+- Do not assume unspecified filters or invent criteria.
 
-    DATE AND TIME:
-    - Dates must use YYYY-MM-DD format.
-    - Times must use HH:MM in 24-hour format.
-    - Resolve relative dates such as yesterday, last Monday,
-      and last week using reliable current-date information.
-    - Never guess the current date or timezone.
-    - For time-range searches, provide time_date, start_time,
-      and end_time together.
-    - If a time range is provided without a calendar date,
-      ask the user to specify the date before calling this tool.
-    - Interpret time boundaries using the timezone configured
-      on the MCP server.
-    - A time range crossing midnight is supported.
+DATE AND TIME:
+- Use YYYY-MM-DD dates and HH:MM 24-hour times.
+- Resolve relative dates using reliable current-date information.
+- For time searches, provide time_date, start_time, and end_time together.
+- Ask for a date if the user provides only a time range.
+- Use the MCP server's configured timezone.
+- Time ranges crossing midnight are supported.
 
-    FILTER INTERPRETATION:
-    - sender: Email address or sender name.
-    - recipient: Email address or recipient name.
-    - subject: Subject text to search for.
-    - keyword: Search terms in the email.
-    - has_attachment: True for emails with attachments,
-      False for emails without attachments.
-    - is_unread: True for unread emails, False for read emails.
-    - Omit filters that the user has not specified.
+LIMITATIONS:
+- Returns email metadata, not complete bodies.
+- Use get_email_details for one email, get_email_conversation for a thread,
+  and get_attachment to download an attachment.
+- Cannot send, modify, or delete emails.
 
-    LIMITATIONS:
-    - This tool searches and lists email metadata.
-    - It does not return complete email bodies.
-    - Use get_email_details to retrieve a complete email.
-    - Use get_email_conversation to retrieve a full thread.
-    - Use get_attachment to download an attachment.
-    - This tool cannot send, modify, or delete emails.
-
-    RETURNS:
-    - Matching email metadata, including message_id, thread_id,
-      sender, recipient, subject, date, snippet, and labels.
-    - Attachment indicator when available.
-    - Number of returned emails and estimated matching count.
-    - Search query, server timezone, and next_page_token.
-    """
+OUTPUT:
+Return matching email metadata, result count, estimated matching count,
+search query, server timezone, and next_page_token.
+"""
     try:
+
+        params = SearchEmailsRequest.model_validate({
+            "sender": sender,
+            "recipient": recipient,
+            "subject": subject,
+            "keyword": keyword,
+            "start_date": start_date,
+            "end_date": end_date,
+            "time_date": time_date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "has_attachment": has_attachment,
+            "is_unread": is_unread,
+            "max_results": max_results,
+            "page_token": page_token,
+        })
+
         #  params values
         sender = params.sender
         recipient = params.recipient
@@ -474,10 +460,7 @@ def search_emails(
 
         #  validation
         max_results = _validate_max_results(max_results)
-        start_date = _validate_date(start_date, "start_date")
-        end_date = _validate_date(end_date, "end_date")
-        time_date = _validate_date(time_date, "time_date")
-
+        
         page_token = page_token or ""
 
         if start_date and end_date and start_date > end_date:
@@ -591,47 +574,42 @@ def search_emails(
 
 @mcp.tool()
 def get_email_details( 
-        params : GetEmailDetailsInput
-        # message_id : str
+        # params : GetEmailDetailsInput
+        message_id : str
     ) -> dict[str, Any]:
 
     """
-    PURPOSE:
-    Retrieve the detailed contents and metadata of a specific Gmail email.
+Retrieve the complete contents and metadata of a specific Gmail email.
 
-    WHEN TO USE:
-    - When the user wants to read the complete contents of an email.
-    - When the user asks for details about a particular email found through search_emails.
-    - When the user wants to inspect the sender, recipients, subject, date, body, or attachments of an email.
-    - When the user provides a specific Gmail message ID.
+WHEN TO USE:
+- Read an email or inspect its sender, recipients, subject, body, or attachments.
+- Use a message_id obtained from search_emails or another email tool.
 
-    INPUT INSTRUCTIONS:
-    - message_id must be a valid Gmail message ID.
-    - Obtain message_id from search_emails results or another email-related tool.
-    - Do not invent or guess message IDs.
+INPUT:
+- message_id must be a valid Gmail message ID.
+- Never invent or guess IDs.
 
-    RETRIEVAL INSTRUCTIONS:
-    - Retrieve the specified email using its Gmail message ID.
-    - Extract and return the available email metadata and parsed message body.
-    - Include attachment metadata when attachments are present.
-    - Preserve the original email's meaning and content.
-    - Do not retrieve unrelated emails.
+BEHAVIOR:
+- Retrieve only the specified email.
+- Return parsed body, available metadata, and attachment metadata.
+- Preserve the original email's content and meaning.
 
-    LIMITATIONS:
-    - This tool retrieves only one email at a time.
-    - It does not search for emails. Use search_emails for that.
-    - It does not retrieve an entire email conversation. Use get_email_conversation when the user requests the complete thread.
-    - It does not download attachments. Use get_attachment for that.
+LIMITATIONS:
+- Retrieves one email only; does not search or retrieve entire conversations.
+- Use search_emails for searching, get_email_conversation for threads,
+  and get_attachment for downloading attachments.
 
-    OUTPUT:
-    Return the email details, including available sender and recipient information,
-    subject, timestamp, body, labels, and attachment metadata.
-
-    The operation is read-only and does not modify the email.
-    """
+OUTPUT:
+Return available sender, recipient, subject, timestamp, body, labels,
+and attachment metadata. This operation is read-only.
+"""
     try:
 
         # parameters
+        params = GetEmailDetailsInput.model_validate({
+            "message_id": message_id,
+        })
+
         message_id = params.message_id
 
         # validation
@@ -665,50 +643,42 @@ def get_email_details(
 
 @mcp.tool()
 def get_email_conversation(
-        params : GetEmailConversationInput
-        # thread_id : str
+        # params : GetEmailConversationInput
+        thread_id : str
     ) -> dict[str, Any]:
     """
-    PURPOSE:
-    Retrieve all available messages belonging to a specific Gmail conversation.
+Retrieve all available messages in a specific Gmail conversation.
 
-    WHEN TO USE:
-    - When the user asks to read an entire email conversation or thread.
-    - When the user wants to see the complete discussion between participants.
-    - When the user wants to review previous replies and responses.
-    - When the user asks for the conversation history of a particular email.
-    - When the user provides a Gmail thread ID.
+WHEN TO USE:
+- Read an entire email thread or review its conversation history.
+- Use a thread_id obtained from search_emails or get_email_details.
 
-    INPUT INSTRUCTIONS:
-    - thread_id must be a valid Gmail thread ID.
-    - Obtain thread_id from search_emails results or get_email_details output.
-    - Do not use a message_id in place of a thread_id.
-    - Do not invent or guess thread IDs.
+INPUT:
+- thread_id must be a valid Gmail thread ID.
+- Do not substitute message_id or invent IDs.
 
-    RETRIEVAL INSTRUCTIONS:
-    - Retrieve the specified Gmail conversation using its thread ID.
-    - Extract the available messages belonging to that thread.
-    - Return each message with its available metadata and parsed body.
-    - Preserve the message order and individual message boundaries.
-    - Include attachment metadata when available.
-    - Do not combine separate messages into one email body.
+BEHAVIOR:
+- Retrieve only the specified conversation.
+- Preserve message order and individual message boundaries.
+- Return each message's parsed body, metadata, and attachment metadata.
 
-    LIMITATIONS:
-    - This tool retrieves only the specified conversation.
-    - It does not search for conversations. Use search_emails for that.
-    - It does not download attachments. Use get_attachment for that.
-    - It does not retrieve unrelated conversations.
+LIMITATIONS:
+- Does not search for conversations or download attachments.
+- Use search_emails for searching and get_attachment for downloads.
 
-    OUTPUT:
-    Return the conversation details, including available thread information
-    and individual messages with their sender, recipients, subject, timestamp,
-    body, and attachment metadata.
-
-    The operation is read-only and does not modify the conversation.
-    """
+OUTPUT:
+Return thread information and individual messages with available sender,
+recipients, subject, timestamp, body, and attachment metadata.
+This operation is read-only.
+"""
     try:
 
         # parameters
+
+        params = GetEmailConversationInput.model_validate({
+            "thread_id": thread_id
+        })
+        
         thread_id = params.thread_id
 
         # validator
@@ -743,51 +713,44 @@ def get_email_conversation(
 
 @mcp.tool()
 def get_attachment(
-    params: GetAttachmentInput,
+    # params: GetAttachmentInput,
+    message_id: str,
+    attachment_id: str,
 ) -> dict[str, Any]:
     """
-    PURPOSE:
-    Retrieve and save a specific attachment from a Gmail email.
+Retrieve all available messages in a specific Gmail conversation.
 
-    WHEN TO USE:
-    - When the user explicitly asks to download or save an email attachment.
-    - When the user wants to retrieve a particular file attached to an email.
-    - When the user identifies an attachment from get_email_details or
-      get_email_conversation output.
-    - When the user asks to download a specific attachment by its name,
-      provided its corresponding attachment metadata has been retrieved.
+WHEN TO USE:
+- Read an entire email thread or review its conversation history.
+- Use a thread_id obtained from search_emails or get_email_details.
 
-    INPUT INSTRUCTIONS:
-    - message_id must identify the Gmail email containing the attachment.
-    - attachment_id must identify the specific attachment within that email.
-    - Obtain both identifiers from email details or conversation results.
-    - Do not invent or guess attachment IDs.
-    - Do not substitute a thread_id for a message_id.
+INPUT:
+- thread_id must be a valid Gmail thread ID.
+- Do not substitute message_id or invent IDs.
 
-    DOWNLOAD INSTRUCTIONS:
-    - Retrieve the specified email from Gmail.
-    - Extract its available attachment metadata.
-    - Verify that the requested attachment_id belongs to the specified email.
-    - Obtain the filename, MIME type, and file size from Gmail metadata.
-    - Download the attachment using the Gmail API.
-    - Save the downloaded file under the local downloads/ directory.
-    - Do not use metadata supplied by the LLM as the authoritative source.
+BEHAVIOR:
+- Retrieve only the specified conversation.
+- Preserve message order and individual message boundaries.
+- Return each message's parsed body, metadata, and attachment metadata.
 
-    LIMITATIONS:
-    - This tool downloads only one specified attachment per invocation.
-    - It does not search for emails or attachments.
-    - It does not retrieve attachments from unrelated emails.
-    - It does not send, modify, or delete emails.
-    - The file is saved in the MCP server's local downloads/ directory.
+LIMITATIONS:
+- Does not search for conversations or download attachments.
+- Use search_emails for searching and get_attachment for downloads.
 
-    OUTPUT:
-    Return the download result, including the saved file information
-    provided by the attachment service.
-
-    The operation is read-only with respect to Gmail.
-    It saves a local copy of the attachment without modifying the original email.
-    """
+OUTPUT:
+Return thread information and individual messages with available sender,
+recipients, subject, timestamp, body, and attachment metadata.
+This operation is read-only.
+"""
     try:
+
+        params = GetAttachmentInput.model_validate({
+            "message_id": message_id,
+            "attachment_id": attachment_id,
+        })
+
+        message_id = params.message_id
+        attachment_id = params.attachment_id
         # 1. Extract and validate input parameters
         message_id = _validate_id(params.message_id, "message_id")
         attachment_id = _validate_id(params.attachment_id, "attachment_id")
