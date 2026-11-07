@@ -10,6 +10,9 @@ Public MCP tools:
 All Gmail operations use the readonly OAuth scope.
 """
 
+from typing import Annotated, Any
+from pydantic import Field
+
 import json
 
 # error handling
@@ -72,28 +75,28 @@ def get_service():
     return get_gmail_service()
 
 
-# --------------------------------------------------
-# 3. COMMON VALIDATION / ERROR HELPERS
-# --------------------------------------------------
+# # --------------------------------------------------
+# # 3. COMMON VALIDATION / ERROR HELPERS
+# # --------------------------------------------------
 
 
-def _validate_id(value: str, field_name: str) -> str:
-    """Validate a Gmail message, thread, or attachment ID."""
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{field_name} must not be empty.")
+# def _validate_id(value: str, field_name: str) -> str:
+#     """Validate a Gmail message, thread, or attachment ID."""
+#     if not isinstance(value, str) or not value.strip():
+#         raise ValueError(f"{field_name} must not be empty.")
 
-    return value.strip()
+#     return value.strip()
 
 
-def _validate_max_results(max_results: int) -> int:
-    """Limit the number of search results returned."""
-    if isinstance(max_results, bool) or not isinstance(max_results, int):
-        raise TypeError("max_results must be an integer.")
+# def _validate_max_results(max_results: int) -> int:
+#     """Limit the number of search results returned."""
+#     if isinstance(max_results, bool) or not isinstance(max_results, int):
+#         raise TypeError("max_results must be an integer.")
 
-    if not 1 <= max_results <= 50:
-        raise ValueError("max_results must be between 1 and 50.")
+#     if not 1 <= max_results <= 50:
+#         raise ValueError("max_results must be between 1 and 50.")
 
-    return max_results
+#     return max_results
 
 
 def _classify_http_error(exc: HttpError) -> dict:
@@ -340,19 +343,112 @@ def _error_result(exc: Exception, tool_name: str) -> dict[str, Any]:
 @mcp.tool()
 def search_emails(
     # params : SearchEmailsRequest
-    sender: str | None = None,
-    recipient: str | None = None,
-    subject: str | None = None,
-    keyword: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    time_date: str | None = None,
-    start_time: str | None = None,
-    end_time: str | None = None,
-    has_attachment: bool | None = None,
-    is_unread: bool | None = None,
-    max_results: int = 10,
-    page_token: str | None = None,
+    sender: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Filter emails by sender name or email address. "
+                "Example: 'john@example.com'."
+            ),
+        ),
+    ] = None,
+    recipient: Annotated[
+        str | None,
+        Field(default=None, description="Recipient email address or name."),
+    ] = None,
+    subject: Annotated[
+        str | None,
+        Field(default=None, description="Full or partial email subject."),
+    ] = None,
+    keyword: Annotated[
+        str | None,
+        Field(default=None, description="Keyword or phrase to search for."),
+    ] = None,
+    start_date: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="Inclusive start of the date range. Date in YYYY-MM-DD format.",
+        ),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="Inclusive ending of the date range. Date in YYYY-MM-DD format.",
+        ),
+    ] = None,
+    time_date: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Calendar date for the time-based search. "
+                "Must be provided together with start_time and end_time. "
+                "Format: YYYY-MM-DD."
+            ),
+        ),
+    ] = None,
+    start_time: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="Inclusive start of the time range. Time in HH:MM 24-hour format.",
+        ),
+    ] = None,
+    end_time: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="Inclusive ending of the time range. Time in HH:MM 24-hour format.",
+        ),
+    ] = None,
+    has_attachment: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "True for emails with attachments, "
+                "False for emails without attachments, "
+                "None for no attachment filter."
+            ),
+        ),
+    ] = None,
+    is_unread: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "True for unread emails, False for read emails, "
+                "None for no read-status filter."
+            ),
+        ),
+    ] = None,
+    max_results: Annotated[
+        int,
+        Field(
+            default=10,
+            ge=1,
+            le=50,
+            description=(
+                "Maximum number of emails to return. "
+                "Must be between 1 and 50. Defaults to 10."
+            ),
+        ),
+    ] = 10,
+    page_token: Annotated[
+        str | None,
+        Field(
+            default=None,
+            min_length=1,
+            description=(
+                "Pagination token from the previous search response. "
+                "Provide it only when continuing the same search. "
+                "Do not generate or modify this token."
+            ),
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """
     Search and list Gmail emails using optional filters.
@@ -406,87 +502,121 @@ def search_emails(
             }
         )
 
-        #  params values
-        sender = params.sender
-        recipient = params.recipient
-        subject = params.subject
-        keyword = params.keyword
+        # #  params values
+        # sender = params.sender
+        # recipient = params.recipient
+        # subject = params.subject
+        # keyword = params.keyword
 
-        start_date = params.start_date.isoformat() if params.start_date else None
+        # start_date = params.start_date.isoformat() if params.start_date else None
 
-        end_date = params.end_date.isoformat() if params.end_date else None
+        # end_date = params.end_date.isoformat() if params.end_date else None
 
-        time_date = params.time_date.isoformat() if params.time_date else None
+        # time_date = params.time_date.isoformat() if params.time_date else None
 
-        start_time = params.start_time.strftime("%H:%M") if params.start_time else None
+        # start_time = params.start_time.strftime("%H:%M") if params.start_time else None
 
-        end_time = params.end_time.strftime("%H:%M") if params.end_time else None
+        # end_time = params.end_time.strftime("%H:%M") if params.end_time else None
 
-        has_attachment = params.has_attachment
-        is_unread = params.is_unread
-        max_results = params.max_results
-        page_token = params.page_token
+        # has_attachment = params.has_attachment
+        # is_unread = params.is_unread
+        # max_results = params.max_results
+        # page_token = params.page_token
 
-        #  validation
-        max_results = _validate_max_results(max_results)
+        # #  validation
+        # # max_results = _validate_max_results(max_results)
 
-        page_token = page_token or ""
+        # # page_token = page_token or ""
 
-        if start_date and end_date and start_date > end_date:
-            raise ValueError("start_date must not be after end_date.")
+        # if start_date and end_date and start_date > end_date:
+        #     raise ValueError("start_date must not be after end_date.")
 
-        if (start_time is None) != (end_time is None):
-            raise ValueError("Provide both start_time and end_time.")
+        # if (start_time is None) != (end_time is None):
+        #     raise ValueError("Provide both start_time and end_time.")
 
-        if (time_date is None) != (start_time is None):
-            raise ValueError("Provide time_date, start_time, and end_time together.")
+        # if (time_date is None) != (start_time is None):
+        #     raise ValueError("Provide time_date, start_time, and end_time together.")
 
-        # if not any([
-        #     sender, recipient, subject, keyword,
-        #     start_date, end_date, time_date,
-        #     has_attachment is not None,
-        #     is_unread is not None,
-        # ]):
-        #     raise ValueError(
-        #         "Provide at least one search condition."
-        #     )
+        # # if not any([
+        # #     sender, recipient, subject, keyword,
+        # #     start_date, end_date, time_date,
+        # #     has_attachment is not None,
+        # #     is_unread is not None,
+        # # ]):
+        # #     raise ValueError(
+        # #         "Provide at least one search condition."
+        # #     )
 
-        date_filters = None
-        if start_date or end_date:
-            date_filters = {
-                "after": start_date,
-                "before": end_date,
-            }
+        # date_filters = None
+        # if start_date or end_date:
+        #     date_filters = {
+        #         "after": start_date,
+        #         "before": end_date,
+        #     }
 
-        time_filters = None
-        if time_date:
-            time_filters = {
-                "date": time_date,
-                "start_time": start_time,
-                "end_time": end_time,
-            }
+        # time_filters = None
+        # if time_date:
+        #     time_filters = {
+        #         "date": time_date,
+        #         "start_time": start_time,
+        #         "end_time": end_time,
+        #     }
 
-        service = get_service()
+        # service = get_service()
 
-        # search_service builds Gmail query conditions and calls
-        # Gmail's messages.list endpoint.
-        result = search_service.search_emails(
-            service=service,
-            sender=sender,
-            recipient=recipient,
-            subject=subject,
-            keyword=keyword,
-            date_filters=date_filters,
-            time_filters=time_filters,
-            attachment_filters={
-                "hasAttachment": has_attachment,
-                "isUnread": is_unread,
-            },
-            max_results=max_results,
-            page_token=page_token,
-        )
+        # # search_service builds Gmail query conditions and calls
+        # # Gmail's messages.list endpoint.
+        # result = search_service.search_emails(
+        #     service=service,
+        #     sender=sender,
+        #     recipient=recipient,
+        #     subject=subject,
+        #     keyword=keyword,
+        #     date_filters=date_filters,
+        #     time_filters=time_filters,
+        #     attachment_filters={
+        #         "hasAttachment": has_attachment,
+        #         "isUnread": is_unread,
+        #     },
+        #     max_results=max_results,
+        #     page_token=page_token,
+        # )
 
         # The search response contains IDs, not complete email bodies.
+        service = get_service()
+        result = search_service.search_emails(
+            service=service,
+            sender=params.sender,
+            recipient=params.recipient,
+            subject=params.subject,
+            keyword=params.keyword,
+            date_filters=(
+                {
+                    "after": (
+                        params.start_date.isoformat() if params.start_date else None
+                    ),
+                    "before": params.end_date.isoformat() if params.end_date else None,
+                }
+                if params.start_date or params.end_date
+                else None
+            ),
+            time_filters=(
+                {
+                    "date": params.time_date.isoformat(),
+                    "start_time": params.start_time.strftime("%H:%M"),
+                    "end_time": params.end_time.strftime("%H:%M"),
+                }
+                if params.time_date is not None
+                else None
+            ),
+            attachment_filters={
+                "hasAttachment": params.has_attachment,
+                "isUnread": params.is_unread,
+            },
+            max_results=params.max_results,
+            page_token=params.page_token,
+        )
+
         parsed_messages = []
 
         for reference in result.get("messages", []):
@@ -541,7 +671,17 @@ def search_emails(
 @mcp.tool()
 def get_email_details(
     # params : GetEmailDetailsInput
-    message_id: str,
+    message_id:Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=256,
+            description=(
+                "Gmail message ID obtained from search_emails. "
+                "Required to retrieve one complete email."
+            ),
+        ),
+    ],
 ) -> dict[str, Any]:
     """
     Retrieve the complete contents and metadata of a specific Gmail email.
@@ -578,8 +718,8 @@ def get_email_details(
 
         message_id = params.message_id
 
-        # validation
-        message_id = _validate_id(message_id, "message_id")
+        # # validation
+        # message_id = _validate_id(message_id, "message_id")
 
         service = get_service()
 
@@ -608,7 +748,17 @@ def get_email_details(
 @mcp.tool()
 def get_email_conversation(
     # params : GetEmailConversationInput
-    thread_id: str,
+    thread_id: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=256,
+            description=(
+                "Gmail thread ID obtained from search results "
+                "or email details. Retrieves all messages in the thread."
+            ),
+        ),
+    ],
 ) -> dict[str, Any]:
     """
     Retrieve all available messages in a specific Gmail conversation.
@@ -642,8 +792,8 @@ def get_email_conversation(
 
         thread_id = params.thread_id
 
-        # validator
-        thread_id = _validate_id(thread_id, "thread_id")
+        # # validator
+        # thread_id = _validate_id(thread_id, "thread_id")
 
         service = get_service()
 
@@ -672,8 +822,25 @@ def get_email_conversation(
 @mcp.tool()
 def get_attachment(
     # params: GetAttachmentInput,
-    message_id: str,
-    attachment_id: str,
+    message_id: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=256,
+            description="Gmail message ID containing the attachment.",
+        ),
+    ],
+    attachment_id: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=256,
+            description=(
+                "Attachment ID obtained from the attachment "
+                "metadata of the specified email."
+            ),
+        ),
+    ],
 ) -> dict[str, Any]:
     """
     Download a specific attachment from a Gmail email.
@@ -715,8 +882,8 @@ def get_attachment(
         message_id = params.message_id
         attachment_id = params.attachment_id
         # 1. Extract and validate input parameters
-        message_id = _validate_id(params.message_id, "message_id")
-        attachment_id = _validate_id(params.attachment_id, "attachment_id")
+        # message_id = _validate_id(params.message_id, "message_id")
+        # attachment_id = _validate_id(params.attachment_id, "attachment_id")
 
         # 2. Get Gmail service
         service = get_service()

@@ -1,5 +1,5 @@
 # attachment_service.py
-
+import binascii
 import base64
 import re
 from pathlib import Path
@@ -10,16 +10,28 @@ from .gmail_service import get_attachment_data
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
 
 
-def _decode_attachment_data(encoded_data):
-    """Decode Gmail's Base64URL-encoded attachment data."""
+def _decode_attachment_data(encoded_data: str) -> bytes:
+    """Strictly decode Gmail Base64URL attachment data."""
 
     if not encoded_data:
         raise ValueError("Attachment data is empty.")
 
-    # Gmail may omit Base64URL padding.
-    encoded_data += "=" * (-len(encoded_data) % 4)
+    if not isinstance(encoded_data, str):
+        raise TypeError("Attachment data must be a string.")
 
-    return base64.urlsafe_b64decode(encoded_data)
+    try:
+        encoded_bytes = encoded_data.encode("ascii")
+
+        encoded_bytes += b"=" * (-len(encoded_bytes) % 4)
+
+        return base64.b64decode(
+            encoded_bytes,
+            altchars=b"-_",
+            validate=True,
+        )
+
+    except (ValueError, UnicodeEncodeError, binascii.Error) as exc:
+        raise ValueError("Invalid Base64URL attachment data.") from exc
 
 
 def _safe_filename(filename):
@@ -39,25 +51,25 @@ def _safe_filename(filename):
     return filename
 
 
-def _get_unique_path(directory, filename):
-    """Avoid overwriting an existing file."""
-
-    path = directory / filename
-
-    if not path.exists():
-        return path
-
+def _write_unique_file(directory, filename, content):
     original = Path(filename)
-    counter = 1
+
+    counter = 0
 
     while True:
-        new_name = f"{original.stem}_{counter}{original.suffix}"
-        path = directory / new_name
+        if counter == 0:
+            candidate = directory / filename
+        else:
+            candidate = directory / (f"{original.stem}_{counter}{original.suffix}")
 
-        if not path.exists():
-            return path
+        try:
+            with candidate.open("xb") as file:
+                file.write(content)
 
-        counter += 1
+            return candidate
+
+        except FileExistsError:
+            counter += 1
 
 
 def download_attachment(
@@ -129,10 +141,11 @@ def download_attachment(
     directory.mkdir(parents=True, exist_ok=True)
 
     # Never overwrite an existing attachment.
-    file_path = _get_unique_path(directory, filename)
-
-    # Save binary bytes. This works for PDFs, images, documents, etc.
-    file_path.write_bytes(file_bytes)
+    file_path = _write_unique_file(
+        directory,
+        filename,
+        file_bytes,
+    )
 
     return {
         "filename": file_path.name,
