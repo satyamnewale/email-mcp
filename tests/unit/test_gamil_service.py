@@ -1,6 +1,8 @@
 
 from services import gmail_service
+import pytest
 
+pytestmark = pytest.mark.unit
 
 def test_list_messages(mock_gmail_service):
     messages = (

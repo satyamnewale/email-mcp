@@ -1,6 +1,8 @@
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from services.search import (
     build_search_query,
     build_date_query,

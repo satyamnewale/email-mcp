@@ -1,6 +1,8 @@
 
 import base64
+import pytest
 
+pytestmark = pytest.mark.unit
 from services.email_parser import (
     get_headers,
     extract_email_body,

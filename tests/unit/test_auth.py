@@ -2,7 +2,9 @@
 from unittest.mock import MagicMock, patch
 
 from services.auth import get_gmail_service
+import pytest
 
+pytestmark = pytest.mark.unit
 
 @patch("services.auth.build")
 @patch("services.auth.Credentials")

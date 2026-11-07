@@ -2,6 +2,8 @@
 import base64
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from services.attachment_service import (
     _safe_filename,
     _get_unique_path,

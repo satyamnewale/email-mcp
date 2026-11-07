@@ -1,5 +1,6 @@
-
 import pytest
+
+pytestmark = pytest.mark.unit
 from pydantic import ValidationError
 
 from validator.pydantic_class import (
