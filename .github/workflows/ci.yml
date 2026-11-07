@@ -1,0 +1,65 @@
+
+name: Gmail MCP CI
+
+on:
+  push:
+    branches:
+      - main
+      - trial
+
+  pull_request:
+    branches:
+      - main
+      - trial
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Automated Tests
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Setup Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Run unit tests
+        run: uv run pytest tests/unit -m unit
+
+      - name: Run integration tests
+        run: uv run pytest tests/integration -m integration
+
+      - name: Run contract tests
+        run: uv run pytest tests/contracts -m contract
+
+      - name: Run full test suite with coverage
+        run: |
+          uv run pytest \
+            --cov=server \
+            --cov=services \
+            --cov=validator \
+            --cov-report=term-missing \
+            --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gmail-mcp-coverage
+          path: coverage.xml
+          if-no-files-found: ignore

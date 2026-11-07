@@ -199,9 +199,7 @@ uv sync
 The application requests the following scope:
 
 ```python
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly"
-]
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 ```
 
 For an OAuth application in testing mode, your Google account may need to be added as a test user.

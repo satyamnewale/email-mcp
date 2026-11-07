@@ -10,28 +10,27 @@ Public MCP tools:
 All Gmail operations use the readonly OAuth scope.
 """
 
-from functools import lru_cache
-from typing import Any
-from fastmcp import FastMCP
-from googleapiclient.errors import HttpError
-
-from services.auth import get_gmail_service
-from services import gmail_service as gmail_api
-from services import search as search_service
-from services import email_parser
-from services import attachment_service
-
-from validator.pydantic_class import (
-    SearchEmailsRequest,
-    GetEmailDetailsInput,
-    GetEmailConversationInput,
-    GetAttachmentInput,
-)
+import json
 
 # error handling
 import logging
-import json
+from functools import lru_cache
+from typing import Any
+
+from fastmcp import FastMCP
 from google.auth.exceptions import RefreshError, TransportError
+from googleapiclient.errors import HttpError
+
+from services import attachment_service, email_parser
+from services import gmail_service as gmail_api
+from services import search as search_service
+from services.auth import get_gmail_service
+from validator.pydantic_class import (
+    GetAttachmentInput,
+    GetEmailConversationInput,
+    GetEmailDetailsInput,
+    SearchEmailsRequest,
+)
 
 # --------------------------------------------------
 # LOGGING CONFIGURATION
@@ -89,7 +88,7 @@ def _validate_id(value: str, field_name: str) -> str:
 def _validate_max_results(max_results: int) -> int:
     """Limit the number of search results returned."""
     if isinstance(max_results, bool) or not isinstance(max_results, int):
-        raise ValueError("max_results must be an integer.")
+        raise TypeError("max_results must be an integer.")
 
     if not 1 <= max_results <= 50:
         raise ValueError("max_results must be between 1 and 50.")
@@ -130,15 +129,13 @@ def _classify_http_error(exc: HttpError) -> dict:
         return {
             "code": "AUTHENTICATION_ERROR",
             "message": (
-                "Gmail authentication failed. "
-                "Reauthentication may be required."
+                "Gmail authentication failed. Reauthentication may be required."
             ),
             "retryable": False,
         }
 
     # HTTP 403: Permission or quota failure.
     if status == 403:
-
         quota_reasons = {
             "rateLimitExceeded",
             "userRateLimitExceeded",
@@ -149,18 +146,14 @@ def _classify_http_error(exc: HttpError) -> dict:
             return {
                 "code": "RATE_LIMIT_EXCEEDED",
                 "message": (
-                    "Gmail API quota exceeded. "
-                    "Retry after an appropriate delay."
+                    "Gmail API quota exceeded. Retry after an appropriate delay."
                 ),
                 "retryable": True,
             }
 
         return {
             "code": "PERMISSION_DENIED",
-            "message": (
-                "Gmail access denied. "
-                "Check OAuth permissions and API access."
-            ),
+            "message": ("Gmail access denied. Check OAuth permissions and API access."),
             "retryable": False,
         }
 
@@ -168,9 +161,7 @@ def _classify_http_error(exc: HttpError) -> dict:
     if status == 404:
         return {
             "code": "RESOURCE_NOT_FOUND",
-            "message": (
-                "The requested Gmail resource was not found."
-            ),
+            "message": ("The requested Gmail resource was not found."),
             "retryable": False,
         }
 
@@ -186,9 +177,7 @@ def _classify_http_error(exc: HttpError) -> dict:
     if status is not None and status >= 500:
         return {
             "code": "GMAIL_API_ERROR",
-            "message": (
-                "Gmail service is temporarily unavailable."
-            ),
+            "message": ("Gmail service is temporarily unavailable."),
             "retryable": True,
         }
 
@@ -199,11 +188,7 @@ def _classify_http_error(exc: HttpError) -> dict:
     }
 
 
-
-def _error_result(
-    exc: Exception,
-    tool_name: str
-) -> dict[str, Any]:
+def _error_result(exc: Exception, tool_name: str) -> dict[str, Any]:
     """
     Classify an exception, log diagnostic information,
     and return a safe structured error to the MCP caller.
@@ -233,7 +218,7 @@ def _error_result(
             tool_name,
             error["code"],
             getattr(exc.resp, "status", None),
-            exc_info=True,
+            exc_info=(type(exc), exc, exc.__traceback__),
         )
 
     # 3. OAuth refresh failures.
@@ -251,7 +236,7 @@ def _error_result(
             "Tool=%s | Error=%s",
             tool_name,
             error["code"],
-            exc_info=True,
+            exc_info=(type(exc), exc, exc.__traceback__),
         )
 
     # 4. Missing configuration.
@@ -259,8 +244,7 @@ def _error_result(
         error = {
             "code": "CONFIGURATION_ERROR",
             "message": (
-                "Gmail OAuth configuration is missing. "
-                "Check the server configuration."
+                "Gmail OAuth configuration is missing. Check the server configuration."
             ),
             "retryable": False,
         }
@@ -269,7 +253,7 @@ def _error_result(
             "Tool=%s | Error=%s",
             tool_name,
             error["code"],
-            exc_info=True,
+            exc_info=(type(exc), exc, exc.__traceback__),
         )
 
     # 5. Network and timeout failures.
@@ -287,7 +271,7 @@ def _error_result(
             "Tool=%s | Error=%s",
             tool_name,
             error["code"],
-            exc_info=True,
+            exc_info=(type(exc), exc, exc.__traceback__),
         )
 
     # 6. Unexpected errors.
@@ -295,8 +279,7 @@ def _error_result(
         error = {
             "code": "INTERNAL_ERROR",
             "message": (
-                "An unexpected error occurred while "
-                "processing the Gmail request."
+                "An unexpected error occurred while processing the Gmail request."
             ),
             "retryable": False,
         }
@@ -372,55 +355,56 @@ def search_emails(
     page_token: str | None = None,
 ) -> dict[str, Any]:
     """
-Search and list Gmail emails using optional filters.
+    Search and list Gmail emails using optional filters.
 
-WHEN TO USE:
-- Find, list, or filter emails by sender, recipient, subject, keyword,
-  date, time, attachment presence, or read status.
-- Retrieve recent emails or continue a previous search.
+    WHEN TO USE:
+    - Find, list, or filter emails by sender, recipient, subject, keyword,
+      date, time, attachment presence, or read status.
+    - Retrieve recent emails or continue a previous search.
 
-SEARCH BEHAVIOR:
-- Combine supplied filters.
-- If no filters are provided, return the 10 most recent emails.
-- Use max_results for the requested result count (maximum 50).
-- Use page_token only to continue a previous search.
-- Do not assume unspecified filters or invent criteria.
+    SEARCH BEHAVIOR:
+    - Combine supplied filters.
+    - If no filters are provided, return the 10 most recent emails.
+    - Use max_results for the requested result count (maximum 50).
+    - Use page_token only to continue a previous search.
+    - Do not assume unspecified filters or invent criteria.
 
-DATE AND TIME:
-- Use YYYY-MM-DD dates and HH:MM 24-hour times.
-- Resolve relative dates using reliable current-date information.
-- For time searches, provide time_date, start_time, and end_time together.
-- Ask for a date if the user provides only a time range.
-- Use the MCP server's configured timezone.
-- Time ranges crossing midnight are supported.
+    DATE AND TIME:
+    - Use YYYY-MM-DD dates and HH:MM 24-hour times.
+    - Resolve relative dates using reliable current-date information.
+    - For time searches, provide time_date, start_time, and end_time together.
+    - Ask for a date if the user provides only a time range.
+    - Use the MCP server's configured timezone.
+    - Time ranges crossing midnight are supported.
 
-LIMITATIONS:
-- Returns email metadata, not complete bodies.
-- Use get_email_details for one email, get_email_conversation for a thread,
-  and get_attachment to download an attachment.
-- Cannot send, modify, or delete emails.
+    LIMITATIONS:
+    - Returns email metadata, not complete bodies.
+    - Use get_email_details for one email, get_email_conversation for a thread,
+      and get_attachment to download an attachment.
+    - Cannot send, modify, or delete emails.
 
-OUTPUT:
-Return matching email metadata, result count, estimated matching count,
-search query, server timezone, and next_page_token.
-"""
+    OUTPUT:
+    Return matching email metadata, result count, estimated matching count,
+    search query, server timezone, and next_page_token.
+    """
     try:
-
-        params = SearchEmailsRequest.model_validate({
-            "sender": sender,
-            "recipient": recipient,
-            "subject": subject,
-            "keyword": keyword,
-            "start_date": start_date,
-            "end_date": end_date,
-            "time_date": time_date,
-            "start_time": start_time,
-            "end_time": end_time,
-            "has_attachment": has_attachment,
-            "is_unread": is_unread,
-            "max_results": max_results,
-            "page_token": page_token,
-        })
+        params = SearchEmailsRequest.model_validate(
+            {
+                "sender": sender,
+                "recipient": recipient,
+                "subject": subject,
+                "keyword": keyword,
+                "start_date": start_date,
+                "end_date": end_date,
+                "time_date": time_date,
+                "start_time": start_time,
+                "end_time": end_time,
+                "has_attachment": has_attachment,
+                "is_unread": is_unread,
+                "max_results": max_results,
+                "page_token": page_token,
+            }
+        )
 
         #  params values
         sender = params.sender
@@ -428,30 +412,15 @@ search query, server timezone, and next_page_token.
         subject = params.subject
         keyword = params.keyword
 
-        start_date = (
-            params.start_date.isoformat()
-            if params.start_date else None
-        )
+        start_date = params.start_date.isoformat() if params.start_date else None
 
-        end_date = (
-            params.end_date.isoformat()
-            if params.end_date else None
-        )
+        end_date = params.end_date.isoformat() if params.end_date else None
 
-        time_date = (
-            params.time_date.isoformat()
-            if params.time_date else None
-        )
+        time_date = params.time_date.isoformat() if params.time_date else None
 
-        start_time = (
-            params.start_time.strftime("%H:%M")
-            if params.start_time else None
-        )
+        start_time = params.start_time.strftime("%H:%M") if params.start_time else None
 
-        end_time = (
-            params.end_time.strftime("%H:%M")
-            if params.end_time else None
-        )
+        end_time = params.end_time.strftime("%H:%M") if params.end_time else None
 
         has_attachment = params.has_attachment
         is_unread = params.is_unread
@@ -460,7 +429,7 @@ search query, server timezone, and next_page_token.
 
         #  validation
         max_results = _validate_max_results(max_results)
-        
+
         page_token = page_token or ""
 
         if start_date and end_date and start_date > end_date:
@@ -561,10 +530,7 @@ search query, server timezone, and next_page_token.
         }
 
     except Exception as exc:
-        return _error_result(
-            exc,
-            tool_name="search_emails"
-        )
+        return _error_result(exc, tool_name="search_emails")
 
 
 # --------------------------------------------------
@@ -573,42 +539,42 @@ search query, server timezone, and next_page_token.
 
 
 @mcp.tool()
-def get_email_details( 
-        # params : GetEmailDetailsInput
-        message_id : str
-    ) -> dict[str, Any]:
-
+def get_email_details(
+    # params : GetEmailDetailsInput
+    message_id: str,
+) -> dict[str, Any]:
     """
-Retrieve the complete contents and metadata of a specific Gmail email.
+    Retrieve the complete contents and metadata of a specific Gmail email.
 
-WHEN TO USE:
-- Read an email or inspect its sender, recipients, subject, body, or attachments.
-- Use a message_id obtained from search_emails or another email tool.
+    WHEN TO USE:
+    - Read an email or inspect its sender, recipients, subject, body, or attachments.
+    - Use a message_id obtained from search_emails or another email tool.
 
-INPUT:
-- message_id must be a valid Gmail message ID.
-- Never invent or guess IDs.
+    INPUT:
+    - message_id must be a valid Gmail message ID.
+    - Never invent or guess IDs.
 
-BEHAVIOR:
-- Retrieve only the specified email.
-- Return parsed body, available metadata, and attachment metadata.
-- Preserve the original email's content and meaning.
+    BEHAVIOR:
+    - Retrieve only the specified email.
+    - Return parsed body, available metadata, and attachment metadata.
+    - Preserve the original email's content and meaning.
 
-LIMITATIONS:
-- Retrieves one email only; does not search or retrieve entire conversations.
-- Use search_emails for searching, get_email_conversation for threads,
-  and get_attachment for downloading attachments.
+    LIMITATIONS:
+    - Retrieves one email only; does not search or retrieve entire conversations.
+    - Use search_emails for searching, get_email_conversation for threads,
+      and get_attachment for downloading attachments.
 
-OUTPUT:
-Return available sender, recipient, subject, timestamp, body, labels,
-and attachment metadata. This operation is read-only.
-"""
+    OUTPUT:
+    Return available sender, recipient, subject, timestamp, body, labels,
+    and attachment metadata. This operation is read-only.
+    """
     try:
-
         # parameters
-        params = GetEmailDetailsInput.model_validate({
-            "message_id": message_id,
-        })
+        params = GetEmailDetailsInput.model_validate(
+            {
+                "message_id": message_id,
+            }
+        )
 
         message_id = params.message_id
 
@@ -631,10 +597,8 @@ and attachment metadata. This operation is read-only.
         }
 
     except Exception as exc:
-        return _error_result(
-            exc,
-            tool_name="get_email_details"
-        )
+        return _error_result(exc, tool_name="get_email_details")
+
 
 # --------------------------------------------------
 # 6. TOOL: GET AN EMAIL CONVERSATION
@@ -643,42 +607,39 @@ and attachment metadata. This operation is read-only.
 
 @mcp.tool()
 def get_email_conversation(
-        # params : GetEmailConversationInput
-        thread_id : str
-    ) -> dict[str, Any]:
+    # params : GetEmailConversationInput
+    thread_id: str,
+) -> dict[str, Any]:
     """
-Retrieve all available messages in a specific Gmail conversation.
+    Retrieve all available messages in a specific Gmail conversation.
 
-WHEN TO USE:
-- Read an entire email thread or review its conversation history.
-- Use a thread_id obtained from search_emails or get_email_details.
+    WHEN TO USE:
+    - Read an entire email thread or review its conversation history.
+    - Use a thread_id obtained from search_emails or get_email_details.
 
-INPUT:
-- thread_id must be a valid Gmail thread ID.
-- Do not substitute message_id or invent IDs.
+    INPUT:
+    - thread_id must be a valid Gmail thread ID.
+    - Do not substitute message_id or invent IDs.
 
-BEHAVIOR:
-- Retrieve only the specified conversation.
-- Preserve message order and individual message boundaries.
-- Return each message's parsed body, metadata, and attachment metadata.
+    BEHAVIOR:
+    - Retrieve only the specified conversation.
+    - Preserve message order and individual message boundaries.
+    - Return each message's parsed body, metadata, and attachment metadata.
 
-LIMITATIONS:
-- Does not search for conversations or download attachments.
-- Use search_emails for searching and get_attachment for downloads.
+    LIMITATIONS:
+    - Does not search for conversations or download attachments.
+    - Use search_emails for searching and get_attachment for downloads.
 
-OUTPUT:
-Return thread information and individual messages with available sender,
-recipients, subject, timestamp, body, and attachment metadata.
-This operation is read-only.
-"""
+    OUTPUT:
+    Return thread information and individual messages with available sender,
+    recipients, subject, timestamp, body, and attachment metadata.
+    This operation is read-only.
+    """
     try:
-
         # parameters
 
-        params = GetEmailConversationInput.model_validate({
-            "thread_id": thread_id
-        })
-        
+        params = GetEmailConversationInput.model_validate({"thread_id": thread_id})
+
         thread_id = params.thread_id
 
         # validator
@@ -700,10 +661,7 @@ This operation is read-only.
         }
 
     except Exception as exc:
-        return _error_result(
-            exc,
-            tool_name="get_email_conversation"
-        )
+        return _error_result(exc, tool_name="get_email_conversation")
 
 
 # --------------------------------------------------
@@ -718,36 +676,41 @@ def get_attachment(
     attachment_id: str,
 ) -> dict[str, Any]:
     """
-Retrieve all available messages in a specific Gmail conversation.
+    Download a specific attachment from a Gmail email.
 
-WHEN TO USE:
-- Read an entire email thread or review its conversation history.
-- Use a thread_id obtained from search_emails or get_email_details.
+    WHEN TO USE:
+    - Download an attachment from a specific email.
+    - Save a PDF, image, document, or other supported attachment.
+    - Use message_id and attachment_id obtained from email metadata.
 
-INPUT:
-- thread_id must be a valid Gmail thread ID.
-- Do not substitute message_id or invent IDs.
+    INPUT:
+    - message_id: Gmail message ID containing the attachment.
+    - attachment_id: Attachment ID obtained from get_email_details.
+    - Never invent or guess attachment IDs.
 
-BEHAVIOR:
-- Retrieve only the specified conversation.
-- Preserve message order and individual message boundaries.
-- Return each message's parsed body, metadata, and attachment metadata.
+    BEHAVIOR:
+    - Retrieve the specified email.
+    - Verify that the attachment belongs to that email.
+    - Obtain attachment metadata directly from Gmail.
+    - Download and save the attachment.
+    - Avoid overwriting existing files.
 
-LIMITATIONS:
-- Does not search for conversations or download attachments.
-- Use search_emails for searching and get_attachment for downloads.
+    LIMITATIONS:
+    - Downloads one attachment per tool call.
+    - Does not search emails or retrieve entire conversations.
+    - Cannot send, modify, or delete emails.
 
-OUTPUT:
-Return thread information and individual messages with available sender,
-recipients, subject, timestamp, body, and attachment metadata.
-This operation is read-only.
-"""
+    OUTPUT:
+    Returns the saved filename, file path, MIME type,
+    file size, and download status.
+    """
     try:
-
-        params = GetAttachmentInput.model_validate({
-            "message_id": message_id,
-            "attachment_id": attachment_id,
-        })
+        params = GetAttachmentInput.model_validate(
+            {
+                "message_id": message_id,
+                "attachment_id": attachment_id,
+            }
+        )
 
         message_id = params.message_id
         attachment_id = params.attachment_id
@@ -766,9 +729,7 @@ This operation is read-only.
         )
 
         # 4. Extract attachment metadata
-        available_attachments = email_parser.attachments(
-            raw_message.get("payload", {})
-        )
+        available_attachments = email_parser.attachments(raw_message.get("payload", {}))
 
         # 5. Verify attachment belongs to this email
         matched_attachment = next(
@@ -781,9 +742,7 @@ This operation is read-only.
         )
 
         if matched_attachment is None:
-            raise ValueError(
-                "The specified attachment does not belong to this email."
-            )
+            raise ValueError("The specified attachment does not belong to this email.")
 
         # 6. Build metadata using Gmail's data
         attachment_metadata = {

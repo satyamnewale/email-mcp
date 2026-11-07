@@ -1,23 +1,17 @@
-from pydantic import BaseModel, Field , field_validator, ConfigDict
-from datetime import date, time, datetime
-from pathlib import PurePath
 import re
+from datetime import date, datetime, time
 
 # search email request
-
 from pydantic import (
     BaseModel,
-    Field,
     ConfigDict,
+    Field,
     field_validator,
     model_validator,
 )
-from datetime import date, time, datetime
-import re
 
 
 class SearchEmailsRequest(BaseModel):
-
     # --------------------------------------------------
     # 1. MODEL CONFIGURATION
     # --------------------------------------------------
@@ -54,18 +48,14 @@ class SearchEmailsRequest(BaseModel):
         default=None,
         min_length=1,
         max_length=500,
-        description=(
-            "Full or partial email subject to search for."
-        ),
+        description=("Full or partial email subject to search for."),
     )
 
     keyword: str | None = Field(
         default=None,
         min_length=1,
         max_length=1000,
-        description=(
-            "Keyword or phrase to search within matching emails."
-        ),
+        description=("Keyword or phrase to search within matching emails."),
     )
 
     # --------------------------------------------------
@@ -75,17 +65,13 @@ class SearchEmailsRequest(BaseModel):
     start_date: date | None = Field(
         default=None,
         description=(
-            "Inclusive beginning of the date range. "
-            "Must use YYYY-MM-DD format."
+            "Inclusive beginning of the date range. Must use YYYY-MM-DD format."
         ),
     )
 
     end_date: date | None = Field(
         default=None,
-        description=(
-            "Inclusive ending of the date range. "
-            "Must use YYYY-MM-DD format."
-        ),
+        description=("Inclusive ending of the date range. Must use YYYY-MM-DD format."),
     )
 
     # --------------------------------------------------
@@ -149,8 +135,7 @@ class SearchEmailsRequest(BaseModel):
         ge=1,
         le=50,
         description=(
-            "Maximum number of emails to return. "
-            "Defaults to 10. Allowed range: 1-50."
+            "Maximum number of emails to return. Defaults to 10. Allowed range: 1-50."
         ),
     )
 
@@ -183,9 +168,7 @@ class SearchEmailsRequest(BaseModel):
         value = value.strip()
 
         if not value:
-            raise ValueError(
-                "Search values cannot be empty or whitespace."
-            )
+            raise ValueError("Search values cannot be empty or whitespace.")
 
         return value
 
@@ -206,30 +189,22 @@ class SearchEmailsRequest(BaseModel):
             return None
 
         if isinstance(value, datetime):
-            raise ValueError(
-                "Date must use YYYY-MM-DD format, not datetime."
-            )
+            raise TypeError("Date must use YYYY-MM-DD format, not datetime.")
 
         if isinstance(value, date):
             return value
 
         if not isinstance(value, str):
-            raise ValueError(
-                "Date must be a string in YYYY-MM-DD format."
-            )
+            raise TypeError("Date must be a string in YYYY-MM-DD format.")
 
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-            raise ValueError(
-                "Date must use YYYY-MM-DD format."
-            )
+            raise TypeError("Date must use YYYY-MM-DD format.")
 
         try:
             return date.fromisoformat(value)
 
         except ValueError as exc:
-            raise ValueError(
-                "Invalid calendar date."
-            ) from exc
+            raise ValueError("Invalid calendar date.") from exc
 
     # --------------------------------------------------
     # 9. TIME VALIDATION
@@ -247,36 +222,25 @@ class SearchEmailsRequest(BaseModel):
             return None
 
         if isinstance(value, time):
-
             if value.tzinfo is not None:
-                raise ValueError(
-                    "Timezone-aware times are not supported."
-                )
+                raise ValueError("Timezone-aware times are not supported.")
 
             if value.second != 0 or value.microsecond != 0:
-                raise ValueError(
-                    "Time must use HH:MM format."
-                )
+                raise ValueError("Time must use HH:MM format.")
 
             return value
 
         if not isinstance(value, str):
-            raise ValueError(
-                "Time must be a string in HH:MM format."
-            )
+            raise ValueError("Time must be a string in HH:MM format.")
 
         if not re.fullmatch(r"\d{2}:\d{2}", value):
-            raise ValueError(
-                "Time must use HH:MM format."
-            )
+            raise ValueError("Time must use HH:MM format.")
 
         try:
             return time.fromisoformat(value)
 
         except ValueError as exc:
-            raise ValueError(
-                "Invalid time."
-            ) from exc
+            raise ValueError("Invalid time.") from exc
 
     # --------------------------------------------------
     # 10. MODEL-LEVEL VALIDATION
@@ -291,9 +255,7 @@ class SearchEmailsRequest(BaseModel):
             and self.end_date is not None
             and self.start_date > self.end_date
         ):
-            raise ValueError(
-                "start_date must not be after end_date."
-            )
+            raise ValueError("start_date must not be after end_date.")
 
         # Validate time filter dependencies.
         time_fields = (
@@ -302,22 +264,17 @@ class SearchEmailsRequest(BaseModel):
             self.end_time,
         )
 
-        provided_time_fields = sum(
-            value is not None for value in time_fields
-        )
+        provided_time_fields = sum(value is not None for value in time_fields)
 
         if provided_time_fields not in (0, 3):
             raise ValueError(
-                "time_date, start_time, and end_time "
-                "must all be provided together."
+                "time_date, start_time, and end_time must all be provided together."
             )
 
         return self
 
 
-
 class GetEmailDetailsInput(BaseModel):
-
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -339,16 +296,15 @@ class GetEmailDetailsInput(BaseModel):
         value = value.strip()
 
         if not value:
-            raise ValueError(
-                "message_id cannot be empty."
-            )
+            raise ValueError("message_id cannot be empty.")
 
         return value
 
+
 # get email conversation
 
-class GetEmailConversationInput(BaseModel):
 
+class GetEmailConversationInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -371,9 +327,7 @@ class GetEmailConversationInput(BaseModel):
         value = value.strip()
 
         if not value:
-            raise ValueError(
-                "thread_id cannot be empty."
-            )
+            raise ValueError("thread_id cannot be empty.")
 
         return value
 

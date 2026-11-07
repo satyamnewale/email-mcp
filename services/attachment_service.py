@@ -1,4 +1,3 @@
-
 # attachment_service.py
 
 import base64
@@ -6,7 +5,6 @@ import re
 from pathlib import Path
 
 from .gmail_service import get_attachment_data
-
 
 # Maximum allowed attachment size: 25 MB.
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
@@ -100,9 +98,7 @@ def download_attachment(
     reported_size = attachment.get("size_bytes")
 
     if reported_size is not None and int(reported_size) > max_bytes:
-        raise ValueError(
-            f"Attachment exceeds the {max_bytes}-byte size limit."
-        )
+        raise ValueError(f"Attachment exceeds the {max_bytes}-byte size limit.")
 
     # Use data already supplied, or fetch it from Gmail.
     if inline_data:
@@ -117,9 +113,7 @@ def download_attachment(
         encoded_data = response.get("data", "")
 
     else:
-        raise ValueError(
-            "Attachment has neither inline data nor an attachment_id."
-        )
+        raise ValueError("Attachment has neither inline data nor an attachment_id.")
 
     # Convert Base64URL text into the original binary file contents.
     file_bytes = _decode_attachment_data(encoded_data)
@@ -128,9 +122,7 @@ def download_attachment(
     actual_size = len(file_bytes)
 
     if actual_size > max_bytes:
-        raise ValueError(
-            f"Decoded attachment exceeds the {max_bytes}-byte size limit."
-        )
+        raise ValueError(f"Decoded attachment exceeds the {max_bytes}-byte size limit.")
 
     # Create the output directory if it does not exist.
     directory = Path(output_dir)

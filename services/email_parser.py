@@ -1,13 +1,13 @@
-
 from base64 import urlsafe_b64decode
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from html.parser import HTMLParser
-from tzlocal import get_localzone
 
+from tzlocal import get_localzone
 
 # --------------------------------------------------
 # 1. GET EMAIL HEADERS
 # --------------------------------------------------
+
 
 def get_headers(payload):
     """
@@ -42,6 +42,7 @@ def get_headers(payload):
 # 2. DECODE BASE64URL BODY DATA
 # --------------------------------------------------
 
+
 def _decode_part_data(encoded_data):
     """
     Decode Base64URL-encoded text returned by Gmail.
@@ -65,6 +66,7 @@ def _decode_part_data(encoded_data):
 # --------------------------------------------------
 # 3. CONVERT HTML BODY TO READABLE TEXT
 # --------------------------------------------------
+
 
 class _HTMLTextExtractor(HTMLParser):
     """Small helper that removes HTML tags from email content."""
@@ -96,6 +98,7 @@ def _html_to_text(html_content):
 # --------------------------------------------------
 # 4. EXTRACT EMAIL BODY
 # --------------------------------------------------
+
 
 def extract_email_body(payload):
     """
@@ -159,6 +162,7 @@ def extract_email_body(payload):
 # 5. EXTRACT ATTACHMENT METADATA
 # --------------------------------------------------
 
+
 def attachments(payload):
     """
     Find attachment information in all nested MIME parts.
@@ -177,13 +181,15 @@ def attachments(payload):
 
         # A filename or attachment ID indicates file-like content.
         if filename or attachment_id:
-            found_attachments.append({
-                "filename": filename or "unnamed_attachment",
-                "mime_type": mime_type,
-                "size_bytes": body.get("size", 0),
-                "attachment_id": attachment_id,
-                "part_id": part.get("partId"),
-            })
+            found_attachments.append(
+                {
+                    "filename": filename or "unnamed_attachment",
+                    "mime_type": mime_type,
+                    "size_bytes": body.get("size", 0),
+                    "attachment_id": attachment_id,
+                    "part_id": part.get("partId"),
+                }
+            )
 
         # Check nested parts too.
         for child in part.get("parts", []):
@@ -197,6 +203,7 @@ def attachments(payload):
 # --------------------------------------------------
 # 6. PARSE ONE COMPLETE EMAIL
 # --------------------------------------------------
+
 
 def parse_message(message):
     """
@@ -220,10 +227,14 @@ def parse_message(message):
     if internal_date is not None:
         timestamp = int(internal_date) / 1000
 
-        received_at = datetime.fromtimestamp(
-            timestamp,
-            tz=timezone.utc,
-        ).astimezone(get_localzone()).isoformat()
+        received_at = (
+            datetime.fromtimestamp(
+                timestamp,
+                tz=UTC,
+            )
+            .astimezone(get_localzone())
+            .isoformat()
+        )
     else:
         received_at = None
 
@@ -243,6 +254,7 @@ def parse_message(message):
 # --------------------------------------------------
 # 7. PARSE AN ENTIRE EMAIL CONVERSATION
 # --------------------------------------------------
+
 
 def parse_thread(thread):
     """

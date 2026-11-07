@@ -1,18 +1,76 @@
-# OAuth credentials
-credentials.json
-token.json
-
-# Environment and secrets
-.env
-.venv/
-
-# Downloaded email attachments
-downloads/
-
-# Python-generated files
+# ==============================
+# Python
+# ==============================
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 
-# Test artifacts
+# ==============================
+# Virtual Environments
+# ==============================
+.venv/
+venv/
+env/
+ENV/
+
+# ==============================
+# Test Files and Coverage
+# ==============================
+
 .pytest_cache/
-tests/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ==============================
+# Google OAuth Credentials
+# ==============================
+credentials.json
+token.json
+client_secret*.json
+
+# ==============================
+# Environment Variables
+# ==============================
+.env
+.env.*
+!.env.example
+
+# ==============================
+# IDE and Editor
+# ==============================
+.vscode/
+.idea/
+*.code-workspace
+
+# ==============================
+# OS Generated Files
+# ==============================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ==============================
+# Python Tools
+# ==============================
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.ipynb_checkpoints/
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/
+
+# ==============================
+# Temporary Files
+# ==============================
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
