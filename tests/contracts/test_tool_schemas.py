@@ -1,3 +1,4 @@
+
 import pytest
 
 from validator.pydantic_class import (
@@ -68,5 +69,13 @@ def test_search_schema_has_optional_filters():
     assert optional_fields <= set(schema["properties"])
 
     required = set(schema.get("required", []))
-
     assert optional_fields.isdisjoint(required)
+
+
+@pytest.mark.contract
+def test_attachment_schema_does_not_accept_caller_metadata():
+    schema = GetAttachmentInput.model_json_schema()
+
+    assert "filename" not in schema["properties"]
+    assert "mime_type" not in schema["properties"]
+    assert "size_bytes" not in schema["properties"]
