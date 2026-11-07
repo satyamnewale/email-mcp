@@ -39,4 +39,5 @@ addopts = [
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",
+    "contract: MCP tool contract tests",
 ]
