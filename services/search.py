@@ -1,31 +1,39 @@
+import re
 from datetime import date, datetime, time, timedelta
 
-from googleapiclient.errors import HttpError
 from tzlocal import get_localzone
 
-# --------------------------------------------------
-# 1. TIMEZONE
-# --------------------------------------------------
 
+EMAIL_PATTERN = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
+
+GMAIL_OPERATOR_PATTERN = re.compile(
+    r"^\s*-?(?:"
+    r"from|to|cc|bcc|subject|after|before|newer|older|"
+    r"newer_than|older_than|has|filename|label|category|"
+    r"is|in|deliveredto|list|larger|smaller|size|rfc822msgid"
+    r")\s*:",
+    re.IGNORECASE,
+)
+
+DISPLAY_NAME_PATTERN = re.compile(r"^[\w][\w .'-]{0,79}$")
+
+
+# --------------------------------------------------
+# TIMEZONE
+# --------------------------------------------------
 
 def get_user_timezone():
-    """
-    Detect the timezone configured on the machine
-    running this MCP server.
-    """
+    """Return the timezone configured on the MCP server machine."""
     return get_localzone()
 
 
-# --------------------------------------------------
-# 2. CONVERT LOCAL DATE/TIME TO UNIX TIMESTAMP
-# --------------------------------------------------
-
-
 def local_datetime_to_timestamp(local_datetime):
-    """
-    Convert a naive local datetime into a Unix timestamp.
-    The machine's detected timezone is applied automatically.
-    """
+    """Convert a naive local datetime to a Unix timestamp."""
+
     timezone = get_user_timezone()
     aware_datetime = local_datetime.replace(tzinfo=timezone)
 
@@ -33,9 +41,73 @@ def local_datetime_to_timestamp(local_datetime):
 
 
 # --------------------------------------------------
-# 3. BUILD SENDER / RECIPIENT / SUBJECT QUERY
+# SEARCH INPUT VALIDATION
 # --------------------------------------------------
 
+def _validate_identity(value, field_name):
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string.")
+
+    value = value.strip()
+
+    if not value:
+        raise ValueError(f"{field_name} cannot be empty.")
+
+    if EMAIL_PATTERN.fullmatch(value):
+        return value
+
+    if DISPLAY_NAME_PATTERN.fullmatch(value):
+        return value
+
+    raise ValueError(
+        f"{field_name} must be a valid email address or simple display name. "
+        "Gmail search operators are not allowed."
+    )
+
+
+def _validate_literal_phrase(value, field_name):
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string.")
+
+    value = value.strip()
+
+    if not value:
+        raise ValueError(f"{field_name} cannot be empty.")
+
+    if '"' in value or "\\" in value:
+        raise ValueError(
+            f'{field_name} cannot contain double quotes or backslashes.'
+        )
+
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise ValueError(
+            f"{field_name} cannot contain control characters."
+        )
+
+    # Reject values beginning with Gmail search operators.
+    if GMAIL_OPERATOR_PATTERN.match(value):
+        raise ValueError(
+            f"{field_name} cannot contain Gmail search operators. "
+            "Provide a literal search phrase instead."
+        )
+
+    return value
+
+
+def _quote_phrase(value):
+    """Quote a validated literal phrase for Gmail search."""
+    return f'"{value}"'
+
+
+# --------------------------------------------------
+# BUILD SENDER / RECIPIENT / SUBJECT QUERY
+# --------------------------------------------------
 
 def build_search_query(
     sender=None,
@@ -45,21 +117,32 @@ def build_search_query(
     has_attachment=None,
     is_unread=None,
 ):
-    """Build a Gmail-compatible search query."""
+    """Build a Gmail query using validated user input."""
 
     query_parts = []
 
+    sender = _validate_identity(sender, "sender")
+    recipient = _validate_identity(recipient, "recipient")
+    subject = _validate_literal_phrase(subject, "subject")
+    keyword = _validate_literal_phrase(keyword, "keyword")
+
     if sender:
-        query_parts.append(f"from:{sender}")
+        if EMAIL_PATTERN.fullmatch(sender):
+            query_parts.append(f"from:{sender}")
+        else:
+            query_parts.append(f"from:{_quote_phrase(sender)}")
 
     if recipient:
-        query_parts.append(f"to:{recipient}")
+        if EMAIL_PATTERN.fullmatch(recipient):
+            query_parts.append(f"to:{recipient}")
+        else:
+            query_parts.append(f"to:{_quote_phrase(recipient)}")
 
     if subject:
-        query_parts.append(f"subject:{subject}")
+        query_parts.append(f"subject:{_quote_phrase(subject)}")
 
     if keyword:
-        query_parts.append(keyword)
+        query_parts.append(_quote_phrase(keyword))
 
     if has_attachment is True:
         query_parts.append("has:attachment")
@@ -75,16 +158,14 @@ def build_search_query(
 
 
 # --------------------------------------------------
-# 4. BUILD DATE-RANGE QUERY
+# BUILD DATE-RANGE QUERY
 # --------------------------------------------------
-
 
 def build_date_query(start_date=None, end_date=None):
     """
-    Build a date query using the machine's local timezone.
+    Build a Gmail date query using the local timezone.
 
-    Input format: YYYY-MM-DD
-    Both start_date and end_date are inclusive calendar dates.
+    Both dates are inclusive calendar dates.
     """
 
     query_parts = []
@@ -99,7 +180,6 @@ def build_date_query(start_date=None, end_date=None):
             tzinfo=timezone,
         )
 
-        # Subtract one second to include the start boundary.
         start_timestamp = int(start_dt.timestamp()) - 1
 
         query_parts.append(f"after:{start_timestamp}")
@@ -116,16 +196,14 @@ def build_date_query(start_date=None, end_date=None):
 
         end_timestamp = int(end_dt.timestamp())
 
-        # before: excludes the next day's midnight.
         query_parts.append(f"before:{end_timestamp}")
 
     return " ".join(query_parts)
 
 
 # --------------------------------------------------
-# 5. BUILD TIME-RANGE QUERY
+# BUILD TIME-RANGE QUERY
 # --------------------------------------------------
-
 
 def build_time_query(
     start_date,
@@ -135,11 +213,8 @@ def build_time_query(
     """
     Build a local-time query for one date.
 
-    Date format: YYYY-MM-DD
-    Time format: HH:MM (24-hour clock)
-
     If end_time is earlier than or equal to start_time,
-    the interval is treated as crossing midnight.
+    the range is treated as crossing midnight.
     """
 
     timezone = get_user_timezone()
@@ -160,7 +235,6 @@ def build_time_query(
         tzinfo=timezone,
     )
 
-    # Example: 22:00 to 02:00 means the next day at 02:00.
     if end_dt <= start_dt:
         end_dt += timedelta(days=1)
 
@@ -171,9 +245,8 @@ def build_time_query(
 
 
 # --------------------------------------------------
-# 6. SEARCH EMAILS
+# SEARCH EMAILS
 # --------------------------------------------------
-
 
 def search_emails(
     service,
@@ -188,42 +261,38 @@ def search_emails(
     page_token=None,
 ):
     """
-    Search emails using Gmail search operators.
+    Search Gmail using validated filters.
 
-    date_filters example:
-        {
-            "after": "2026-10-23",
-            "before": "2026-10-25"
-        }
-
-    time_filters example:
-        {
-            "date": "2026-10-23",
-            "start_time": "08:00",
-            "end_time": "12:00"
-        }
+    User-provided text filters are inserted as literal phrases,
+    not unrestricted Gmail search syntax.
     """
 
-    query_parts = []
+    if isinstance(max_results, bool) or not isinstance(max_results, int):
+        raise ValueError("max_results must be an integer.")
 
     max_results = min(max(1, max_results), 500)
 
-    # Sender, recipient, subject and keyword.
+    query_parts = []
+
     text_query = build_search_query(
         sender=sender,
         recipient=recipient,
         subject=subject,
         keyword=keyword,
         has_attachment=(
-            attachment_filters.get("hasAttachment") if attachment_filters else None
+            attachment_filters.get("hasAttachment")
+            if attachment_filters else None
         ),
-        is_unread=(attachment_filters.get("isUnread") if attachment_filters else None),
+        is_unread=(
+            attachment_filters.get("isUnread")
+            if attachment_filters else None
+        ),
     )
 
     if text_query:
         query_parts.append(text_query)
 
-    # Date range.
+    # Date range
     if date_filters:
         date_query = build_date_query(
             start_date=date_filters.get("after"),
@@ -233,7 +302,7 @@ def search_emails(
         if date_query:
             query_parts.append(date_query)
 
-    # Specific time range on a particular date.
+    # Time range
     if time_filters:
         time_query = build_time_query(
             start_date=time_filters["date"],
@@ -243,26 +312,33 @@ def search_emails(
 
         query_parts.append(time_query)
 
-    # Gmail accepts search conditions through one q parameter.
+    query = " ".join(query_parts).strip()
+
     params = {
         "userId": "me",
         "maxResults": max_results,
     }
 
-    query = " ".join(query_parts).strip()
-
     if query:
         params["q"] = query
 
     if page_token:
-        params["pageToken"] = page_token
+        if not isinstance(page_token, str) or not page_token.strip():
+            raise ValueError("Invalid page_token.")
 
-    response = service.users().messages().list(**params).execute()
+        params["pageToken"] = page_token.strip()
+
+    response = (
+        service.users()
+        .messages()
+        .list(**params)
+        .execute()
+    )
 
     return {
         "messages": response.get("messages", []),
         "next_page_token": response.get("nextPageToken"),
         "result_size_estimate": response.get("resultSizeEstimate", 0),
-        "query": params.get("q", ""),
+        "query": query,
         "timezone": str(get_user_timezone()),
     }

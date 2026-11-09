@@ -10,6 +10,83 @@ from pydantic import (
     model_validator,
 )
 
+EMAIL_PATTERN = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
+
+GMAIL_OPERATOR_PATTERN = re.compile(
+    r"^\s*-?(?:"
+    r"from|to|cc|bcc|subject|after|before|newer|older|"
+    r"newer_than|older_than|has|filename|label|category|"
+    r"is|in|deliveredto|list|larger|smaller|size|rfc822msgid"
+    r")\s*:",
+    re.IGNORECASE,
+)
+
+DISPLAY_NAME_PATTERN = re.compile(r"^[\w][\w .'-]{0,79}$")
+
+
+def _validate_identity(value: str, field_name: str) -> str:
+    """
+    Accept either a simple email address or a display name.
+
+    Examples:
+        user@example.com
+        John
+        John Smith
+
+    Gmail search operators and arbitrary query syntax are rejected.
+    """
+
+    value = value.strip()
+
+    if not value:
+        raise ValueError(f"{field_name} cannot be empty.")
+
+    if EMAIL_PATTERN.fullmatch(value):
+        return value
+
+    if DISPLAY_NAME_PATTERN.fullmatch(value):
+        return value
+
+    raise ValueError(
+        f"{field_name} must be a valid email address or a simple display name. "
+        "Gmail search operators and special query syntax are not allowed."
+    )
+
+
+def _validate_literal_phrase(value, field_name):
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string.")
+
+    value = value.strip()
+
+    if not value:
+        raise ValueError(f"{field_name} cannot be empty.")
+
+    if '"' in value or "\\" in value:
+        raise ValueError(
+            f'{field_name} cannot contain double quotes or backslashes.'
+        )
+
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise ValueError(
+            f"{field_name} cannot contain control characters."
+        )
+
+    # Reject values beginning with Gmail search operators.
+    if GMAIL_OPERATOR_PATTERN.match(value):
+        raise ValueError(
+            f"{field_name} cannot contain Gmail search operators. "
+            "Provide a literal search phrase instead."
+        )
+
+    return value
 
 class SearchEmailsRequest(BaseModel):
     # --------------------------------------------------
@@ -152,15 +229,25 @@ class SearchEmailsRequest(BaseModel):
     # 7. STRING VALIDATION
     # --------------------------------------------------
 
-    @field_validator(
-        "sender",
-        "recipient",
-        "subject",
-        "keyword",
-        "page_token",
-    )
+    @field_validator("sender", "recipient")
     @classmethod
-    def validate_search_strings(cls, value):
+    def validate_identity_fields(cls, value, info):
+        if value is None:
+            return None
+
+        return _validate_identity(value, info.field_name)
+
+    @field_validator("subject", "keyword")
+    @classmethod
+    def validate_literal_search_fields(cls, value, info):
+        if value is None:
+            return None
+
+        return _validate_literal_phrase(value, info.field_name)
+
+    @field_validator("page_token")
+    @classmethod
+    def validate_page_token(cls, value):
 
         if value is None:
             return None
@@ -168,7 +255,10 @@ class SearchEmailsRequest(BaseModel):
         value = value.strip()
 
         if not value:
-            raise ValueError("Search values cannot be empty or whitespace.")
+            raise ValueError("page_token cannot be empty.")
+
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("page_token cannot contain control characters.")
 
         return value
 
@@ -320,6 +410,16 @@ class GetEmailConversationInput(BaseModel):
         ),
     )
 
+    max_messages: int = Field(
+        default=20,
+        ge=1,
+        le=20,
+        description=(
+            "Maximum number of latest messages to retrieve. "
+            "Allowed range: 1-20."
+        ),
+    )
+
     @field_validator("thread_id")
     @classmethod
     def validate_thread_id(cls, value):
@@ -337,14 +437,12 @@ class GetAttachmentInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message_id: str = Field(
-        ...,
         min_length=1,
         max_length=256,
         description="Gmail message ID containing the attachment. Obtain this from search_emails or get_email_details.",
     )
 
     attachment_id: str = Field(
-        ...,
         min_length=1,
         max_length=256,
         description="Attachment ID obtained from the attachment metadata returned by get_email_details.",
@@ -352,7 +450,7 @@ class GetAttachmentInput(BaseModel):
 
     @field_validator("message_id", "attachment_id")
     @classmethod
-    def validate_ids(cls, value: str) -> str:
+    def validate_ids(cls, value: str) :
         value = value.strip()
 
         if not value:

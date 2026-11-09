@@ -1,76 +1,24 @@
-# ==============================
-# Python
-# ==============================
+# Python environment
+.venv/
+
+# Python cache
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
 
-# ==============================
-# Virtual Environments
-# ==============================
-.venv/
-venv/
-env/
-ENV/
-
-# ==============================
-# Test Files and Coverage
-# ==============================
-
+# Testing cache and reports
 .pytest_cache/
 .coverage
 .coverage.*
 coverage.xml
 htmlcov/
 
-# ==============================
-# Google OAuth Credentials
-# ==============================
+# Google OAuth credentials
 credentials.json
 token.json
-client_secret*.json
 
-# ==============================
-# Environment Variables
-# ==============================
+# Downloaded attachments
+downloads/
+
+# Environment variables
 .env
 .env.*
-!.env.example
-
-# ==============================
-# IDE and Editor
-# ==============================
-.vscode/
-.idea/
-*.code-workspace
-
-# ==============================
-# OS Generated Files
-# ==============================
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-# ==============================
-# Python Tools
-# ==============================
-.mypy_cache/
-.ruff_cache/
-.pyright/
-.ipynb_checkpoints/
-
-# ==============================
-# Logs
-# ==============================
-*.log
-logs/
-
-# ==============================
-# Temporary Files
-# ==============================
-*.tmp
-*.temp
-*.bak
-*.swp
-*.swo

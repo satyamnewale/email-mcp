@@ -57,19 +57,54 @@ def test_get_email_details_success(
 
 
 @patch("server.get_service")
+@patch("server.gmail_api.get_message")
 @patch("server.gmail_api.get_thread")
 def test_get_email_conversation_success(
     mock_get_thread,
+    mock_get_message,
     mock_get_service,
     sample_thread,
 ):
+
     mock_get_service.return_value = object()
-    mock_get_thread.return_value = sample_thread
+
+    # The first Gmail request returns lightweight thread metadata.
+    mock_get_thread.return_value = {
+        "id": "thread_123",
+        "messages": [
+            {
+                "id": "message_123",
+                "threadId": "thread_123",
+            },
+            {
+                "id": "message_456",
+                "threadId": "thread_123",
+            },
+        ],
+    }
+
+    # The next requests retrieve selected full messages individually.
+    mock_get_message.side_effect = sample_thread["messages"]
 
     result = server.get_email_conversation("thread_123")
 
     assert result["ok"] is True
-    assert result["conversation"]["message_count"] == 2
+
+    conversation = result["conversation"]
+
+    assert conversation["thread_id"] == "thread_123"
+    assert conversation["message_count"] == 2
+    assert conversation["returned_count"] == 2
+    assert conversation["truncated"] is False
+    assert len(conversation["messages"]) == 2
+
+    mock_get_thread.assert_called_once_with(
+        mock_get_service.return_value,
+        "thread_123",
+        format="minimal",
+    )
+
+    assert mock_get_message.call_count == 2
 
 
 @patch("server.get_service")
@@ -168,3 +203,45 @@ def test_attachment_not_belonging_to_email(
 
     assert result["ok"] is False
     assert result["error"]["code"] == "VALIDATION_ERROR"
+
+@patch("server.get_service")
+@patch("server.gmail_api.get_message")
+@patch("server.gmail_api.get_thread")
+def test_get_email_conversation_limits_full_message_requests(
+    mock_get_thread,
+    mock_get_message,
+    mock_get_service,
+    sample_message,
+):
+
+    mock_get_service.return_value = object()
+
+    mock_get_thread.return_value = {
+        "id": "thread_large",
+        "messages": [
+            {
+                "id": f"message_{index}",
+                "threadId": "thread_large",
+            }
+            for index in range(25)
+        ],
+    }
+
+    mock_get_message.return_value = {
+        **sample_message,
+        "id": "message_latest",
+        "threadId": "thread_large",
+    }
+
+    result = server.get_email_conversation("thread_large")
+
+    assert result["ok"] is True
+
+    conversation = result["conversation"]
+
+    assert conversation["message_count"] == 25
+    assert conversation["returned_count"] == 20
+    assert conversation["messages_truncated"] is True
+    assert conversation["truncated"] is True
+
+    assert mock_get_message.call_count <= 20
