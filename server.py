@@ -600,7 +600,14 @@ def search_emails(
 
         parsed_messages = []
 
+        # Full MIME data is required to inspect attachment metadata.
+        # Normal email searches remain lightweight.
+        check_attachments = params.has_attachment is not None
+
+        message_format = "full" if check_attachments else "metadata"
+
         for reference in result.get("messages", []):
+
             message_id = reference.get("id")
 
             if not message_id:
@@ -609,10 +616,18 @@ def search_emails(
             raw_message = gmail_api.get_message(
                 service,
                 message_id,
-                format="metadata",
+                format=message_format,
             )
 
             headers = email_parser.get_headers(raw_message.get("payload", {}))
+
+            attachment_items = (
+                email_parser.attachments(raw_message.get("payload", {}))
+                if check_attachments
+                else []
+            )
+
+            attachment_count = len(attachment_items) if check_attachments else None
 
             parsed_messages.append(
                 {
@@ -623,9 +638,11 @@ def search_emails(
                     "subject": headers.get("subject"),
                     "date": headers.get("date"),
                     "snippet": raw_message.get("snippet", ""),
-                    "has_attachments": bool(
-                        email_parser.attachments(raw_message.get("payload", {}))
+                    "has_attachments": (
+                        attachment_count > 0 if attachment_count is not None else None
                     ),
+                    "attachment_count": attachment_count,
+                    "attachment_metadata_checked": check_attachments,
                     "labels": raw_message.get("labelIds", []),
                     "content_is_untrusted": True,
                 }
@@ -927,6 +944,13 @@ def get_attachment(
             ),
         ),
     ],
+    part_id: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="MIME part ID from email metadata.",
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """
     Download a specific attachment from a Gmail email.
@@ -937,16 +961,15 @@ def get_attachment(
     - Use message_id and attachment_id obtained from email metadata.
 
     INPUT:
-    - message_id: Gmail message ID containing the attachment.
-    - attachment_id: Attachment ID obtained from get_email_details.
-    - Never invent or guess attachment IDs.
+    - message_id: Gmail message ID.
+    - Provide exactly one of attachment_id or part_id.
 
     BEHAVIOR:
-    - Retrieve the specified email.
-    - Verify that the attachment belongs to that email.
-    - Obtain attachment metadata directly from Gmail.
-    - Download and save the attachment.
-    - Avoid overwriting existing files.
+    - Retrieves the full MIME message.
+    - Locates the requested attachment part.
+    - Uses inline data when present.
+    - Otherwise retrieves data through Gmail attachmentId.
+    - Does not overwrite existing files.
 
     LIMITATIONS:
     - Downloads one attachment per tool call.
@@ -962,11 +985,13 @@ def get_attachment(
             {
                 "message_id": message_id,
                 "attachment_id": attachment_id,
+                "part_id": part_id,
             }
         )
 
         message_id = params.message_id
         attachment_id = params.attachment_id
+        part_id = params.part_id
         # 1. Extract and validate input parameters
         # message_id = _validate_id(params.message_id, "message_id")
         # attachment_id = _validate_id(params.attachment_id, "attachment_id")
@@ -982,16 +1007,10 @@ def get_attachment(
         )
 
         # 4. Extract attachment metadata
-        available_attachments = email_parser.attachments(raw_message.get("payload", {}))
-
-        # 5. Verify attachment belongs to this email
-        matched_attachment = next(
-            (
-                item
-                for item in available_attachments
-                if item.get("attachment_id") == attachment_id
-            ),
-            None,
+        matched_attachment = email_parser.find_attachment_part(
+            raw_message.get("payload", {}),
+            attachment_id=params.attachment_id,
+            part_id=params.part_id,
         )
 
         if matched_attachment is None:
@@ -999,17 +1018,18 @@ def get_attachment(
 
         # 6. Build metadata using Gmail's data
         attachment_metadata = {
-            "filename": matched_attachment.get("filename") or "attachment",
-            "mime_type": matched_attachment.get("mime_type")
-            or "application/octet-stream",
-            "attachment_id": attachment_id,
-            "size_bytes": matched_attachment.get("size_bytes"),
+            "filename": matched_attachment["filename"],
+            "mime_type": matched_attachment["mime_type"],
+            "size_bytes": matched_attachment["size_bytes"],
+            "attachment_id": matched_attachment["attachment_id"],
+            "part_id": matched_attachment["part_id"],
+            "data": matched_attachment["data"],
         }
 
         # 7. Download attachment
         saved_file = attachment_service.download_attachment(
             service=service,
-            message_id=message_id,
+            message_id=params.message_id,
             attachment=attachment_metadata,
             output_dir="downloads",
         )
@@ -1024,6 +1044,7 @@ def get_attachment(
         }
 
     except Exception as exc:
+
         return _error_result(
             exc,
             tool_name="get_attachment",

@@ -201,3 +201,53 @@ def test_attachment_valid():
 
     assert result.message_id == "message_123"
     assert result.attachment_id == "attachment_123"
+
+
+def test_attachment_accepts_attachment_id_only():
+
+    result = GetAttachmentInput.model_validate(
+        {
+            "message_id": "message_123",
+            "attachment_id": "attachment_123",
+        }
+    )
+
+    assert result.attachment_id == "attachment_123"
+    assert result.part_id is None
+
+
+def test_attachment_accepts_part_id_only():
+
+    result = GetAttachmentInput.model_validate(
+        {
+            "message_id": "message_123",
+            "part_id": "1",
+        }
+    )
+
+    assert result.part_id == "1"
+    assert result.attachment_id is None
+
+
+def test_attachment_rejects_both_identifiers():
+
+    with pytest.raises(ValidationError):
+
+        GetAttachmentInput.model_validate(
+            {
+                "message_id": "message_123",
+                "attachment_id": "attachment_123",
+                "part_id": "1",
+            }
+        )
+
+
+def test_attachment_rejects_missing_identifiers():
+
+    with pytest.raises(ValidationError):
+
+        GetAttachmentInput.model_validate(
+            {
+                "message_id": "message_123",
+            }
+        )

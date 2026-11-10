@@ -157,5 +157,6 @@ def download_attachment(
         "size_bytes": actual_size,
         "message_id": message_id,
         "attachment_id": attachment_id,
+        "part_id": attachment.get("part_id"),
         "saved": True,
     }

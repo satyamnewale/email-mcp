@@ -70,14 +70,10 @@ def _validate_literal_phrase(value, field_name):
         raise ValueError(f"{field_name} cannot be empty.")
 
     if '"' in value or "\\" in value:
-        raise ValueError(
-            f'{field_name} cannot contain double quotes or backslashes.'
-        )
+        raise ValueError(f"{field_name} cannot contain double quotes or backslashes.")
 
     if any(ord(char) < 32 or ord(char) == 127 for char in value):
-        raise ValueError(
-            f"{field_name} cannot contain control characters."
-        )
+        raise ValueError(f"{field_name} cannot contain control characters.")
 
     # Reject values beginning with Gmail search operators.
     if GMAIL_OPERATOR_PATTERN.match(value):
@@ -87,6 +83,7 @@ def _validate_literal_phrase(value, field_name):
         )
 
     return value
+
 
 class SearchEmailsRequest(BaseModel):
     # --------------------------------------------------
@@ -415,8 +412,7 @@ class GetEmailConversationInput(BaseModel):
         ge=1,
         le=20,
         description=(
-            "Maximum number of latest messages to retrieve. "
-            "Allowed range: 1-20."
+            "Maximum number of latest messages to retrieve. " "Allowed range: 1-20."
         ),
     )
 
@@ -442,18 +438,47 @@ class GetAttachmentInput(BaseModel):
         description="Gmail message ID containing the attachment. Obtain this from search_emails or get_email_details.",
     )
 
-    attachment_id: str = Field(
+    attachment_id: str | None = Field(
+        default=None,
         min_length=1,
         max_length=256,
         description="Attachment ID obtained from the attachment metadata returned by get_email_details.",
     )
 
-    @field_validator("message_id", "attachment_id")
+    part_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+        description="MIME part ID obtained from email metadata.",
+    )
+
+    @field_validator("message_id")
     @classmethod
-    def validate_ids(cls, value: str) :
+    def validate_message_id(cls, value):
         value = value.strip()
 
         if not value:
-            raise ValueError("ID cannot be empty.")
+            raise ValueError("message_id cannot be empty")
 
         return value
+
+    @field_validator("attachment_id", "part_id")
+    @classmethod
+    def validate_attachment_identifiers(cls, value):
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Identifier cannot be empty")
+
+        return value
+
+    @model_validator(mode="after")
+    def validate_exactly_one_identifier(self):
+
+        if (self.attachment_id is None) == (self.part_id is None):
+            raise ValueError("Provide exactly one of attachment_id or part_id")
+
+        return self

@@ -1,6 +1,7 @@
 import base64
 
 import pytest
+from services.email_parser import find_attachment_part
 
 pytestmark = pytest.mark.unit
 
@@ -17,9 +18,7 @@ from services.email_parser import (
 
 
 def encode(text):
-    return base64.urlsafe_b64encode(
-        text.encode("utf-8")
-    ).decode("utf-8").rstrip("=")
+    return base64.urlsafe_b64encode(text.encode("utf-8")).decode("utf-8").rstrip("=")
 
 
 def test_get_headers(sample_message):
@@ -66,9 +65,7 @@ def test_html_script_and_style_are_not_extracted():
 
     payload = {
         "mimeType": "text/html",
-        "body": {
-            "data": encode(
-                """
+        "body": {"data": encode("""
                 <html>
                 <head><title>Hidden title</title></head>
                 <body>
@@ -78,9 +75,7 @@ def test_html_script_and_style_are_not_extracted():
                     <noscript>Hidden fallback</noscript>
                 </body>
                 </html>
-                """
-            )
-        },
+                """)},
     }
 
     result = extract_email_body(payload)
@@ -219,4 +214,78 @@ def test_parse_thread_rejects_more_than_allowed(sample_thread):
         parse_thread(
             sample_thread,
             max_messages=MAX_THREAD_MESSAGES + 1,
+        )
+
+
+def test_find_attachment_by_gmail_attachment_id():
+
+    payload = {
+        "mimeType": "multipart/mixed",
+        "parts": [
+            {
+                "partId": "1",
+                "filename": "invoice.pdf",
+                "mimeType": "application/pdf",
+                "body": {
+                    "attachmentId": "att_123",
+                    "size": 2048,
+                },
+            }
+        ],
+    }
+
+    result = find_attachment_part(
+        payload,
+        attachment_id="att_123",
+    )
+
+    assert result is not None
+    assert result["filename"] == "invoice.pdf"
+    assert result["attachment_id"] == "att_123"
+
+
+def test_find_inline_attachment_by_part_id():
+
+    payload = {
+        "mimeType": "multipart/mixed",
+        "parts": [
+            {
+                "partId": "1",
+                "filename": "invoice.pdf",
+                "mimeType": "application/pdf",
+                "body": {
+                    "data": "YWJj",
+                    "size": 3,
+                },
+            }
+        ],
+    }
+
+    result = find_attachment_part(
+        payload,
+        part_id="1",
+    )
+
+    assert result is not None
+    assert result["filename"] == "invoice.pdf"
+    assert result["part_id"] == "1"
+    assert result["data"] == "YWJj"
+    assert result["attachment_id"] is None
+
+
+def test_find_attachment_rejects_missing_identifier():
+
+    with pytest.raises(ValueError):
+
+        find_attachment_part({"parts": []})
+
+
+def test_find_attachment_rejects_both_identifiers():
+
+    with pytest.raises(ValueError):
+
+        find_attachment_part(
+            {"parts": []},
+            attachment_id="att_123",
+            part_id="1",
         )

@@ -460,6 +460,92 @@ def attachments(payload):
     return found_attachments
 
 
+def find_attachment_part(
+    payload,
+    attachment_id=None,
+    part_id=None,
+):
+    """
+    Locate one attachment MIME part.
+
+    Supports:
+    - Gmail attachmentId.
+    - MIME partId with inline body data.
+
+    Returns internal metadata, including inline data when present.
+    This data should never be exposed in search results.
+    """
+
+    if (attachment_id is None) == (part_id is None):
+        raise ValueError(
+            "Provide exactly one of attachment_id or part_id."
+        )
+
+    visited_parts = 0
+    matched_attachment = None
+
+    def walk_parts(part, depth):
+
+        nonlocal visited_parts
+        nonlocal matched_attachment
+
+        if matched_attachment is not None:
+            return
+
+        if depth > MAX_MIME_DEPTH:
+            return
+
+        visited_parts += 1
+
+        if visited_parts > MAX_MIME_PARTS:
+            return
+
+        filename = part.get("filename", "")
+        body = part.get("body", {})
+
+        current_attachment_id = body.get("attachmentId")
+        current_part_id = part.get("partId")
+
+        # Match only an actual attachment MIME part.
+        is_attachment_part = bool(
+            filename or current_attachment_id
+        )
+
+        if is_attachment_part:
+
+            matches = (
+                current_attachment_id == attachment_id
+                if attachment_id is not None
+                else current_part_id == part_id
+            )
+
+            if matches:
+
+                matched_attachment = {
+                    "filename": filename or "unnamed_attachment",
+                    "mime_type": part.get(
+                        "mimeType",
+                        "application/octet-stream",
+                    ),
+                    "size_bytes": body.get("size", 0),
+                    "attachment_id": current_attachment_id,
+                    "part_id": current_part_id,
+                    "data": body.get("data"),
+                }
+
+                return
+
+        for child in part.get("parts", []):
+
+            if matched_attachment is not None:
+                return
+
+            walk_parts(child, depth + 1)
+
+    walk_parts(payload, 0)
+
+    return matched_attachment
+
 # --------------------------------------------------
 # 7. PARSE ONE EMAIL
 # --------------------------------------------------
