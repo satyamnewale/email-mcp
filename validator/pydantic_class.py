@@ -435,43 +435,51 @@ class GetAttachmentInput(BaseModel):
     message_id: str = Field(
         min_length=1,
         max_length=256,
-        description="Gmail message ID containing the attachment. Obtain this from search_emails or get_email_details.",
+        description="Gmail message ID containing the attachment.",
     )
 
     attachment_id: str | None = Field(
         default=None,
         min_length=1,
-        max_length=256,
-        description="Attachment ID obtained from the attachment metadata returned by get_email_details.",
+        max_length=8192,
+        description=(
+            "Gmail attachment ID obtained from email metadata. "
+            "Provide this OR part_id, not both."
+        ),
     )
 
     part_id: str | None = Field(
         default=None,
         min_length=1,
         max_length=256,
-        description="MIME part ID obtained from email metadata.",
+        description=(
+            "MIME part ID obtained from email metadata. "
+            "Provide this OR attachment_id, not both."
+        ),
     )
 
     @field_validator("message_id")
     @classmethod
     def validate_message_id(cls, value):
+
         value = value.strip()
 
         if not value:
-            raise ValueError("message_id cannot be empty")
+            raise ValueError("message_id cannot be empty.")
 
         return value
 
     @field_validator("attachment_id", "part_id")
     @classmethod
     def validate_attachment_identifiers(cls, value):
+
         if value is None:
             return None
 
         value = value.strip()
 
         if not value:
-            raise ValueError("Identifier cannot be empty")
+            raise ValueError("Attachment identifier cannot be empty.")
 
         return value
 
@@ -479,6 +487,6 @@ class GetAttachmentInput(BaseModel):
     def validate_exactly_one_identifier(self):
 
         if (self.attachment_id is None) == (self.part_id is None):
-            raise ValueError("Provide exactly one of attachment_id or part_id")
+            raise ValueError("Provide exactly one of attachment_id or part_id.")
 
         return self

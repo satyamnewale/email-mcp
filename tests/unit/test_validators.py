@@ -251,3 +251,14 @@ def test_attachment_rejects_missing_identifiers():
                 "message_id": "message_123",
             }
         )
+
+def test_attachment_accepts_long_gmail_attachment_id():
+
+    long_attachment_id = "A" * 500
+
+    result = GetAttachmentInput.model_validate({
+        "message_id": "message_123",
+        "attachment_id": long_attachment_id,
+    })
+
+    assert result.attachment_id == long_attachment_id

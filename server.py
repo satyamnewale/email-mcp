@@ -936,20 +936,24 @@ def get_attachment(
     attachment_id: Annotated[
         str | None,
         Field(
-            default = None,
+            default=None,
             min_length=1,
-            max_length=256,
+            max_length=8192,
             description=(
-                "Attachment ID obtained from the attachment "
-                "metadata of the specified email."
+                "Gmail attachment ID. "
+                "Provide exactly one of attachment_id or part_id."
             ),
         ),
-    ],
+    ] = None,
     part_id: Annotated[
         str | None,
         Field(
             default=None,
-            description="MIME part ID from email metadata.",
+            min_length=1,
+            max_length=256,
+            description=(
+                "MIME part ID. " "Provide exactly one of attachment_id or part_id."
+            ),
         ),
     ] = None,
 ) -> dict[str, Any]:

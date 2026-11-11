@@ -3,6 +3,7 @@ import binascii
 import base64
 import re
 from pathlib import Path
+from services.email_parser import normalize_mime_type
 
 from .gmail_service import get_attachment_data
 
@@ -150,9 +151,9 @@ def download_attachment(
     return {
         "filename": file_path.name,
         "path": str(file_path.resolve()),
-        "mime_type": attachment.get(
-            "mime_type",
-            "application/octet-stream",
+        "mime_type": normalize_mime_type(
+            attachment.get("mime_type"),
+            file_path.name,
         ),
         "size_bytes": actual_size,
         "message_id": message_id,

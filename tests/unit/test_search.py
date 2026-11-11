@@ -202,3 +202,38 @@ def test_search_emails_calls_gmail_api(mock_gmail_service):
     actual_params = messages.list.call_args.kwargs
 
     assert actual_params["q"] == "from:sender@example.com"
+
+def test_keyword_or_search_builds_gmail_alternatives():
+
+    query = build_search_query(
+        keyword="invoice OR payment receipt",
+    )
+
+    assert query == '{ "invoice" "payment receipt" }'
+
+
+def test_keyword_or_search_accepts_multiple_alternatives():
+
+    query = build_search_query(
+        keyword="project OR meeting OR demo",
+    )
+
+    assert query == '{ "project" "meeting" "demo" }'
+
+
+def test_keyword_or_search_rejects_operator_injection():
+
+    with pytest.raises(ValueError):
+
+        build_search_query(
+            keyword="invoice OR from:attacker@example.com",
+        )
+
+
+def test_keyword_or_search_limits_number_of_alternatives():
+
+    with pytest.raises(ValueError):
+
+        build_search_query(
+            keyword="one OR two OR three OR four OR five OR six",
+        )

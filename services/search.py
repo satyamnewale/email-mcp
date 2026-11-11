@@ -104,6 +104,61 @@ def _quote_phrase(value):
     """Quote a validated literal phrase for Gmail search."""
     return f'"{value}"'
 
+MAX_KEYWORD_OR_TERMS = 5
+
+def _build_keyword_query(keyword: str | None) -> str:
+    """
+    Build a safe Gmail keyword query.
+
+    Examples:
+        invoice
+            -> "invoice"
+
+        invoice OR payment receipt
+            -> { "invoice" "payment receipt" }
+
+        project OR meeting OR demo
+            -> { "project" "meeting" "demo" }
+
+    Only literal phrases are accepted as alternatives.
+    Gmail search operators cannot be injected through a keyword.
+    """
+
+    if keyword is None:
+        return ""
+
+    alternatives = re.split(
+        r"\s+OR\s+",
+        keyword,
+        flags=re.IGNORECASE,
+    )
+
+    if len(alternatives) > MAX_KEYWORD_OR_TERMS:
+        raise ValueError(
+            f"A keyword search can contain at most "
+            f"{MAX_KEYWORD_OR_TERMS} OR alternatives."
+        )
+
+    validated_terms = []
+
+    for term in alternatives:
+
+        term = _validate_literal_phrase(
+            term,
+            "keyword",
+        )
+
+        validated_terms.append(term)
+
+    quoted_terms = [
+        _quote_phrase(term)
+        for term in validated_terms
+    ]
+
+    if len(quoted_terms) == 1:
+        return quoted_terms[0]
+
+    return "{ " + " ".join(quoted_terms) + " }"
 
 # --------------------------------------------------
 # BUILD SENDER / RECIPIENT / SUBJECT QUERY
@@ -124,7 +179,6 @@ def build_search_query(
     sender = _validate_identity(sender, "sender")
     recipient = _validate_identity(recipient, "recipient")
     subject = _validate_literal_phrase(subject, "subject")
-    keyword = _validate_literal_phrase(keyword, "keyword")
 
     if sender:
         if EMAIL_PATTERN.fullmatch(sender):
@@ -141,8 +195,10 @@ def build_search_query(
     if subject:
         query_parts.append(f"subject:{_quote_phrase(subject)}")
 
-    if keyword:
-        query_parts.append(_quote_phrase(keyword))
+    keyword_query = _build_keyword_query(keyword)
+
+    if keyword_query:
+        query_parts.append(keyword_query)
 
     if has_attachment is True:
         query_parts.append("has:attachment")

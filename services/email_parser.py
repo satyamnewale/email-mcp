@@ -1,11 +1,10 @@
 import base64
 import binascii
-
+import mimetypes
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 
 from tzlocal import get_localzone
-
 
 # --------------------------------------------------
 # SECURITY / RESOURCE LIMITS
@@ -19,10 +18,50 @@ MAX_MIME_DEPTH = 20
 MAX_MIME_PARTS = 100
 MAX_ATTACHMENTS_RETURNED = 50
 
+GENERIC_MIME_TYPES = {
+    "",
+    "bin",
+    "application/octet-stream",
+    "binary/octet-stream",
+    "application/binary",
+    "application/x-binary",
+}
+
+
+def normalize_mime_type(
+    mime_type: str | None,
+    filename: str | None,
+) -> str:
+    """
+    Normalize Gmail MIME metadata.
+
+    Gmail may return a generic or malformed MIME value such as "bin".
+    In that case, infer the MIME type from the filename extension.
+    """
+
+    declared = str(mime_type or "").strip().lower()
+
+    if "/" in declared and declared not in GENERIC_MIME_TYPES:
+        return declared
+
+    guessed, _ = mimetypes.guess_type(
+        filename or "",
+        strict=False,
+    )
+
+    if guessed:
+        return guessed
+
+    if "/" in declared:
+        return declared
+
+    return "application/octet-stream"
+
 
 # --------------------------------------------------
 # 1. GET EMAIL HEADERS
 # --------------------------------------------------
+
 
 def get_headers(payload):
     """Extract commonly used headers from a Gmail payload."""
@@ -50,6 +89,7 @@ def get_headers(payload):
 # --------------------------------------------------
 # 2. BOUNDED BASE64URL DECODING
 # --------------------------------------------------
+
 
 def _decode_part_data_bounded(encoded_data, max_bytes):
     """
@@ -121,6 +161,7 @@ def _decode_part_data(encoded_data):
 # --------------------------------------------------
 # 3. CONVERT HTML BODY TO READABLE TEXT
 # --------------------------------------------------
+
 
 class _HTMLTextExtractor(HTMLParser):
     """
@@ -219,6 +260,7 @@ def _html_to_text(html_content):
 # --------------------------------------------------
 # 4. COLLECT MIME TEXT PARTS WITH LIMITS
 # --------------------------------------------------
+
 
 def _collect_text_parts(payload):
     """
@@ -345,6 +387,7 @@ def _truncate_text_bytes(text, max_bytes):
 # 5. EXTRACT EMAIL BODY
 # --------------------------------------------------
 
+
 def extract_email_body_with_info(
     payload,
     max_bytes=MAX_EMAIL_BODY_BYTES,
@@ -407,6 +450,7 @@ def extract_email_body(payload, max_bytes=MAX_EMAIL_BODY_BYTES):
 # 6. EXTRACT ATTACHMENT METADATA
 # --------------------------------------------------
 
+
 def attachments(payload):
     """
     Find attachment metadata in nested MIME parts.
@@ -431,7 +475,10 @@ def attachments(payload):
 
         filename = part.get("filename", "")
         body = part.get("body", {})
-        mime_type = part.get("mimeType", "application/octet-stream")
+        mime_type = normalize_mime_type(
+            part.get("mimeType"),
+            filename,
+        )
 
         attachment_id = body.get("attachmentId")
 
@@ -477,9 +524,7 @@ def find_attachment_part(
     """
 
     if (attachment_id is None) == (part_id is None):
-        raise ValueError(
-            "Provide exactly one of attachment_id or part_id."
-        )
+        raise ValueError("Provide exactly one of attachment_id or part_id.")
 
     visited_parts = 0
     matched_attachment = None
@@ -507,9 +552,7 @@ def find_attachment_part(
         current_part_id = part.get("partId")
 
         # Match only an actual attachment MIME part.
-        is_attachment_part = bool(
-            filename or current_attachment_id
-        )
+        is_attachment_part = bool(filename or current_attachment_id)
 
         if is_attachment_part:
 
@@ -523,9 +566,9 @@ def find_attachment_part(
 
                 matched_attachment = {
                     "filename": filename or "unnamed_attachment",
-                    "mime_type": part.get(
-                        "mimeType",
-                        "application/octet-stream",
+                    "mime_type": normalize_mime_type(
+                        part.get("mimeType"),
+                        filename,
                     ),
                     "size_bytes": body.get("size", 0),
                     "attachment_id": current_attachment_id,
@@ -546,9 +589,11 @@ def find_attachment_part(
 
     return matched_attachment
 
+
 # --------------------------------------------------
 # 7. PARSE ONE EMAIL
 # --------------------------------------------------
+
 
 def parse_message(
     message,
@@ -612,6 +657,7 @@ def parse_message(
 # 8. PARSE A THREAD
 # --------------------------------------------------
 
+
 def parse_thread(
     thread,
     max_messages=MAX_THREAD_MESSAGES,
@@ -625,9 +671,7 @@ def parse_thread(
     """
 
     if not 1 <= max_messages <= MAX_THREAD_MESSAGES:
-        raise ValueError(
-            f"max_messages must be between 1 and {MAX_THREAD_MESSAGES}."
-        )
+        raise ValueError(f"max_messages must be between 1 and {MAX_THREAD_MESSAGES}.")
 
     if max_total_body_bytes < 0:
         raise ValueError("max_total_body_bytes cannot be negative.")
@@ -654,18 +698,12 @@ def parse_thread(
     # Restore conversation order for the output.
     parsed_messages.reverse()
 
-    body_truncated = any(
-        message["body_truncated"]
-        for message in parsed_messages
-    )
+    body_truncated = any(message["body_truncated"] for message in parsed_messages)
 
     return {
         "thread_id": thread.get("id"),
         "message_count": len(all_messages),
         "returned_count": len(parsed_messages),
-        "truncated": (
-            len(all_messages) > len(selected_messages)
-            or body_truncated
-        ),
+        "truncated": (len(all_messages) > len(selected_messages) or body_truncated),
         "messages": parsed_messages,
     }

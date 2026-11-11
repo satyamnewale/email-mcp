@@ -289,3 +289,33 @@ def test_find_attachment_rejects_both_identifiers():
             attachment_id="att_123",
             part_id="1",
         )
+
+def test_attachment_mime_type_uses_filename_when_gmail_returns_bin():
+
+    payload = {
+        "mimeType": "multipart/mixed",
+        "parts": [
+            {
+                "partId": "1",
+                "filename": "receipt.pdf",
+                "mimeType": "bin",
+                "body": {
+                    "attachmentId": "attachment_123",
+                    "size": 2048,
+                },
+            }
+        ],
+    }
+
+    result = attachments(payload)
+
+    assert len(result) == 1
+    assert result[0]["mime_type"] == "application/pdf"
+
+    matched = find_attachment_part(
+        payload,
+        part_id="1",
+    )
+
+    assert matched is not None
+    assert matched["mime_type"] == "application/pdf"

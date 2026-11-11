@@ -126,3 +126,33 @@ def test_download_rejects_oversized_attachment(
             output_dir=tmp_path,
             max_bytes=100,
         )
+
+def test_download_attachment_normalizes_pdf_mime_type(
+    mock_gmail_service,
+    tmp_path,
+):
+
+    content = b"test PDF payload"
+
+    encoded = base64.urlsafe_b64encode(
+        content
+    ).decode().rstrip("=")
+
+    attachment = {
+        "filename": "receipt.pdf",
+        "mime_type": "bin",
+        "data": encoded,
+        "size_bytes": len(content),
+        "part_id": "1",
+    }
+
+    result = download_attachment(
+        service=mock_gmail_service,
+        message_id="message_123",
+        attachment=attachment,
+        output_dir=tmp_path,
+    )
+
+    assert result["mime_type"] == "application/pdf"
+    assert result["filename"] == "receipt.pdf"
+    assert result["saved"] is True
